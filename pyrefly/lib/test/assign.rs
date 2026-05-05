@@ -249,6 +249,26 @@ testcase!(
 );
 
 testcase!(
+    test_unpack_tuple_with_never_element,
+    r#"
+from typing import NoReturn
+def never() -> NoReturn: ...
+# Unreachable: should not error.
+a, b, c = (never(), 1)
+    "#,
+);
+
+testcase!(
+    test_unpack_never_rhs,
+    r#"
+from typing import NoReturn
+def never() -> NoReturn: ...
+# Unreachable: should not error.
+a, b, c = never()
+    "#,
+);
+
+testcase!(
     test_splat_back,
     r#"
 from typing import assert_type, Literal

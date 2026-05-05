@@ -2250,6 +2250,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             BindingExpect::UnpackedLength(b, range, expect) => {
                 let iterable_ty = self.get_idx(*b);
+                // Iterable is `Never`: producing expression cannot complete, so this
+                // unpacking is unreachable. Skip to avoid a spurious `NotIterable`.
+                if iterable_ty.ty().is_never() {
+                    return Arc::new(EmptyAnswer);
+                }
                 let iterables = self.iterate(iterable_ty.ty(), *range, errors, None);
                 for iterable in iterables {
                     match iterable {
@@ -2267,6 +2272,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             );
                         }
                         Iterable::FixedLen(ts) => {
+                            if ts.iter().any(Type::is_never) {
+                                continue;
+                            }
                             let error = match expect {
                                 SizeExpectation::Eq(n) if ts.len() != *n => Some(expect.message()),
                                 SizeExpectation::Ge(n) if ts.len() < *n => Some(expect.message()),
@@ -3823,6 +3831,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                 }
                 Iterable::FixedLen(ts) => {
+                    let has_never = ts.iter().any(Type::is_never);
                     match pos {
                         UnpackedPosition::Index(i) | UnpackedPosition::ReverseIndex(i) => {
                             let idx = if matches!(pos, UnpackedPosition::Index(_)) {
@@ -3834,6 +3843,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 && let Some(element) = ts.get(idx)
                             {
                                 element.clone()
+                            } else if has_never {
+                                // Tuple contains `Never`: this position is unreachable.
+                                self.heap.mk_never()
                             } else {
                                 // We'll report this error when solving for Binding::UnpackedLength.
                                 self.heap.mk_any_error()
@@ -3848,6 +3860,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             {
                                 let elem_ty = self.unions(items.to_vec());
                                 self.heap.mk_class_type(self.stdlib.list(elem_ty))
+                            } else if has_never {
+                                // Tuple contains `Never`: this position is unreachable.
+                                self.heap.mk_never()
                             } else {
                                 // We'll report this error when solving for Binding::UnpackedLength.
                                 self.heap.mk_any_error()
