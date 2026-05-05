@@ -13,9 +13,12 @@ use std::sync::LazyLock;
 use dupe::Dupe;
 use pyrefly_config::args::ConfigOverrideArgs;
 use pyrefly_config::base::ConfigBase;
+use pyrefly_config::config::ConfigSource;
 use pyrefly_config::config::DirectoryRelativeFallbackSearchPathCache;
 use pyrefly_config::config::FallbackSearchPath;
 use pyrefly_config::config::GENERATED_FILE_CONFIG_OVERRIDE;
+use pyrefly_config::resolve_unconfigured::UnconfiguredOverride;
+use pyrefly_config::resolve_unconfigured::resolve_unconfigured_config;
 use pyrefly_python::module_path::ModulePathDetails;
 use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::lock::Mutex;
@@ -78,13 +81,58 @@ pub struct DefaultConfigConfigurer {}
 impl ConfigConfigurer for DefaultConfigConfigurer {
     fn configure(
         &self,
-        _: Option<&std::path::Path>,
+        root: Option<&std::path::Path>,
         mut config: ConfigFile,
         _: Vec<pyrefly_config::finder::ConfigError>,
     ) -> (ArcId<ConfigFile>, Vec<ConfigError>) {
+        apply_unconfigured_resolver_if_applicable(&mut config, root);
         config.configure();
         (ArcId::new(config), Vec::new())
     }
+}
+
+/// If `config` was synthesized (no real `pyrefly.toml` / `[tool.pyrefly]`)
+/// and has not yet been touched by the unconfigured resolver, replace it
+/// with `resolve_unconfigured_config(root, Auto)` while preserving the
+/// project layout fields the synthesized config already established
+/// (`source`, `import_root`, `fallback_search_path`, default
+/// `project_includes`).
+///
+/// No-op for configs loaded from a real file or already carrying a
+/// preset/reason — the function is idempotent and safe to call from
+/// every configurer. Both [`DefaultConfigConfigurer`] and
+/// [`DefaultConfigConfigurerWithOverrides`] route through it so the CLI
+/// produces the same synthesized config regardless of whether the caller
+/// passed `--` overrides. `get_project_config_for_current_dir` invokes
+/// it directly on the `init_at_root` fallback so that `pyrefly check`
+/// (project mode) reaches the resolver too — without that direct call,
+/// project-mode configs would skip the migration / preset wiring that
+/// the file-mode path gets through the configurer.
+pub(crate) fn apply_unconfigured_resolver_if_applicable(
+    config: &mut ConfigFile,
+    root: Option<&Path>,
+) {
+    if matches!(config.source, ConfigSource::File(_))
+        || config.preset.is_some()
+        || config.synthesized_preset_reason.is_some()
+    {
+        return;
+    }
+    let Some(root_dir) = root else {
+        return;
+    };
+    let mut resolved = resolve_unconfigured_config(root_dir, UnconfiguredOverride::Auto);
+    // Carry over the project-layout fields the synthesized config already
+    // computed.
+    resolved.import_root = config.import_root.take();
+    resolved.fallback_search_path = std::mem::take(&mut config.fallback_search_path);
+    resolved.source = std::mem::take(&mut config.source);
+    // Absolutize any relative paths the migration produced (mypy's
+    // `files = src, test`, pyright's `extraPaths`, etc.) against the
+    // project root. `import_root` and `fallback_search_path` are already
+    // absolute so the helper is a no-op for them.
+    resolved.rewrite_with_path_to_config(root_dir);
+    *config = resolved;
 }
 
 pub fn default_config_finder(wrapper: Option<ConfigConfigurerWrapper>) -> ConfigFinder {
@@ -108,10 +156,11 @@ impl DefaultConfigConfigurerWithOverrides {
 impl ConfigConfigurer for DefaultConfigConfigurerWithOverrides {
     fn configure(
         &self,
-        _: Option<&Path>,
-        config: ConfigFile,
+        root: Option<&Path>,
+        mut config: ConfigFile,
         mut errors: Vec<ConfigError>,
     ) -> (ArcId<ConfigFile>, Vec<ConfigError>) {
+        apply_unconfigured_resolver_if_applicable(&mut config, root);
         let (c, mut configure_errors) = self.args.override_config(config);
         if self.ignore_errors {
             errors.clear();
@@ -605,5 +654,128 @@ mod tests {
         // A bare pyproject.toml is still Group 3, so the parent's pyrefly.toml
         // (Group 1) takes precedence.
         assert_eq!(config.source, ConfigSource::File(root.join("pyrefly.toml")));
+    }
+
+    /// Going through `default_config_finder` (which uses
+    /// [`DefaultConfigConfigurer`]) on an unconfigured project with no
+    /// nearby mypy/pyright config produces a config with the basic preset
+    /// and a `NoNearbyConfig` reason — proving the resolver wiring is
+    /// reached for the non-File path.
+    #[test]
+    fn test_unconfigured_project_gets_basic_preset() {
+        use pyrefly_config::base::Preset;
+        use pyrefly_config::config::FallbackSearchPath;
+        use pyrefly_config::config::SynthesizedPresetReason;
+
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![TestPath::dir("pkg", vec![TestPath::file("mod.py")])],
+        );
+
+        let finder = default_config_finder(None);
+        let config = finder.python_file(
+            ModuleNameWithKind::guaranteed(ModuleName::from_str("pkg.mod")),
+            &ModulePath::filesystem(root.join("pkg/mod.py")),
+        );
+
+        assert_eq!(config.source, ConfigSource::Synthetic);
+        assert_eq!(config.preset, Some(Preset::Basic));
+        assert_eq!(
+            config.synthesized_preset_reason,
+            Some(SynthesizedPresetReason::NoNearbyConfig)
+        );
+        // Field-preservation guard: the cache_one path enters
+        // `apply_unconfigured_resolver_if_applicable` with a config
+        // whose `fallback_search_path` is already populated by
+        // `ConfigFile::init_at_root(_, _, fallback=true)`. The carry-
+        // over lines in the resolver are what keep that value through
+        // the swap to the resolver-fresh config; without them the
+        // resolver-fresh config's default `Empty` would land here and
+        // module resolution would lose the import-root fallback.
+        assert!(
+            matches!(config.fallback_search_path, FallbackSearchPath::Explicit(_)),
+            "carry-over lost `fallback_search_path` from input config; got {:?}",
+            config.fallback_search_path,
+        );
+    }
+
+    /// Same setup, but with a `mypy.ini` at the project root. The resolver
+    /// detects it, runs the in-memory mypy migration, and the resulting
+    /// config has `Preset::Legacy` plus the migrated mypy values
+    /// (`check_unannotated_defs = Some(true)`).
+    #[test]
+    fn test_unconfigured_project_with_mypy_ini_migrates() {
+        use pyrefly_config::base::Preset;
+        use pyrefly_config::config::SynthesizedPresetReason;
+        use pyrefly_config::migration::run::MigratedConfigSource;
+        use pyrefly_config::migration::run::MigratedFromKind;
+
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::file_with_contents("mypy.ini", "[mypy]\ncheck_untyped_defs = True\n"),
+                TestPath::dir("pkg", vec![TestPath::file("mod.py")]),
+            ],
+        );
+
+        let finder = default_config_finder(None);
+        let config = finder.python_file(
+            ModuleNameWithKind::guaranteed(ModuleName::from_str("pkg.mod")),
+            &ModulePath::filesystem(root.join("pkg/mod.py")),
+        );
+
+        assert_eq!(config.preset, Some(Preset::Legacy));
+        assert_eq!(
+            config.synthesized_preset_reason,
+            Some(SynthesizedPresetReason::Migrated(MigratedFromKind::Mypy(
+                MigratedConfigSource::DedicatedFile,
+            ))),
+        );
+        assert_eq!(
+            config.root.check_unannotated_defs,
+            Some(true),
+            "full migration: mypy's check_untyped_defs should flow through"
+        );
+    }
+
+    /// Same setup, but with `pyrightconfig.json` at the project root. The
+    /// resolver detects it and migrates pyright's settings; preset is left
+    /// at `None` (== Default behavior) per the migration's contract.
+    #[test]
+    fn test_unconfigured_project_with_pyrightconfig_migrates() {
+        use pyrefly_config::config::SynthesizedPresetReason;
+        use pyrefly_config::migration::run::MigratedConfigSource;
+        use pyrefly_config::migration::run::MigratedFromKind;
+
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::file_with_contents(
+                    "pyrightconfig.json",
+                    r#"{ "include": ["pkg/**/*.py"] }"#,
+                ),
+                TestPath::dir("pkg", vec![TestPath::file("mod.py")]),
+            ],
+        );
+
+        let finder = default_config_finder(None);
+        let config = finder.python_file(
+            ModuleNameWithKind::guaranteed(ModuleName::from_str("pkg.mod")),
+            &ModulePath::filesystem(root.join("pkg/mod.py")),
+        );
+
+        assert_eq!(config.preset, None);
+        assert_eq!(
+            config.synthesized_preset_reason,
+            Some(SynthesizedPresetReason::Migrated(
+                MigratedFromKind::Pyright(MigratedConfigSource::DedicatedFile,)
+            )),
+        );
     }
 }

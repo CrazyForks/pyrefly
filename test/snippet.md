@@ -2,8 +2,15 @@
 
 ## Basic snippet with type error
 
+`pyrefly snippet` shares its config-loading path with `pyrefly check`,
+so a `pyrefly.toml` upward of cwd suppresses the unconfigured-resolver
+wiring and keeps Pyrefly's default error severities — without it,
+the `basic` preset would silence `bad-assignment`. The same holds for
+the other "expects an error" snippet tests below.
+
 ```scrut
-$ $PYREFLY snippet "x: int = 'hello'"
+$ touch $TMPDIR/pyrefly.toml && cd $TMPDIR && \
+> $PYREFLY snippet "x: int = 'hello'"
 ERROR `Literal['hello']` is not assignable to `int` [bad-assignment]
  --> snippet:1:10
   |
@@ -19,7 +26,7 @@ ERROR `Literal['hello']` is not assignable to `int` [bad-assignment]
 
 ```scrut {output_stream: stderr}
 $ $PYREFLY snippet "x: int = 42"
- INFO Checking current directory with default configuration
+ INFO Checking project configured at `*/pyrefly.toml` (glob)
  INFO 0 errors
 [0]
 ```
@@ -28,7 +35,7 @@ $ $PYREFLY snippet "x: int = 42"
 
 ```scrut {output_stream: stderr}
 $ $PYREFLY snippet "import sys; print(sys.version)"
- INFO Checking current directory with default configuration
+ INFO Checking project configured at `*/pyrefly.toml` (glob)
  INFO 0 errors
 [0]
 ```
@@ -57,7 +64,8 @@ ERROR `reveal_type` must be imported from `typing` for runtime usage [unimported
 ## Snippet with typing imports and error
 
 ```scrut
-$ $PYREFLY snippet "from typing import List; x: List[str] = [1, 2, 3]"
+$ touch $TMPDIR/pyrefly.toml && cd $TMPDIR && \
+> $PYREFLY snippet "from typing import List; x: List[str] = [1, 2, 3]"
 ERROR `list[int]` is not assignable to `list[str]` [bad-assignment]
  --> snippet:1:41
   |
@@ -72,7 +80,8 @@ ERROR `list[int]` is not assignable to `list[str]` [bad-assignment]
 ## Snippet with multiple errors
 
 ```scrut
-$ $PYREFLY snippet "def foo(x: str) -> int: return len(x); y: str = foo(42)"
+$ touch $TMPDIR/pyrefly.toml && cd $TMPDIR && \
+> $PYREFLY snippet "def foo(x: str) -> int: return len(x); y: str = foo(42)"
 ERROR Function declared to return `int`, but one or more paths are missing an explicit `return` [bad-return]
  --> snippet:1:20
   |
@@ -99,7 +108,8 @@ ERROR Argument `Literal[42]` is not assignable to parameter `x` with type `str` 
 ## Snippet with JSON output format
 
 ```scrut
-$ $PYREFLY snippet "x: int = 'hello'" --output-format=json
+$ touch $TMPDIR/pyrefly.toml && cd $TMPDIR && \
+> $PYREFLY snippet "x: int = 'hello'" --output-format=json
 {
   "errors": [
     {

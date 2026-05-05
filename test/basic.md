@@ -39,7 +39,8 @@ $ $PYREFLY check $PYREFLY_PY
 ## Text output on stdout
 
 ```scrut
-$ echo "x: str = 42" > $TMPDIR/test.py && $PYREFLY check $TMPDIR/test.py --output-format=min-text
+$ touch $TMPDIR/pyrefly.toml && \
+> echo "x: str = 42" > $TMPDIR/test.py && $PYREFLY check $TMPDIR/test.py --output-format=min-text
 ERROR */test.py:1:* (glob)
 [1]
 ```
@@ -47,7 +48,8 @@ ERROR */test.py:1:* (glob)
 ## JSON output on stdout
 
 ```scrut
-$ echo "x: str = 42" > $TMPDIR/test.py && $PYREFLY check $TMPDIR/test.py --output-format json | $JQ '.[] | length'
+$ touch $TMPDIR/pyrefly.toml && \
+> echo "x: str = 42" > $TMPDIR/test.py && $PYREFLY check $TMPDIR/test.py --output-format json | $JQ '.[] | length'
 1
 [0]
 ```
@@ -55,7 +57,8 @@ $ echo "x: str = 42" > $TMPDIR/test.py && $PYREFLY check $TMPDIR/test.py --outpu
 ## We can typecheck two files with the same name
 
 ```scrut
-$ echo "x: str = 12" > $TMPDIR/same_name.py && \
+$ touch $TMPDIR/pyrefly.toml && \
+> echo "x: str = 12" > $TMPDIR/same_name.py && \
 > echo "x: str = True" > $TMPDIR/same_name.pyi && \
 > $PYREFLY check --python-version 3.13.0 $TMPDIR/same_name.py $TMPDIR/same_name.pyi --output-format=min-text
 ERROR */same_name.py*:1:10-* (glob)
@@ -66,7 +69,8 @@ ERROR */same_name.py*:1:10-* (glob)
 ## We don't report from nested files
 
 ```scrut
-$ echo "x: str = 12" > $TMPDIR/hidden1.py && \
+$ touch $TMPDIR/pyrefly.toml && \
+> echo "x: str = 12" > $TMPDIR/hidden1.py && \
 > echo "import hidden1; y: int = hidden1.x" > $TMPDIR/hidden2.py && \
 > $PYREFLY check --python-version 3.13.0 $TMPDIR/hidden2.py --output-format=min-text
 ERROR */hidden2.py:1:26-35: `str` is not assignable to `int` [bad-assignment] (glob)

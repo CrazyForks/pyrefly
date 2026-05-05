@@ -4,6 +4,7 @@
 
 ```scrut
 $ mkdir -p $TMPDIR/inner/foo && mkdir -p $TMPDIR/inner/baz && \
+> touch $TMPDIR/inner/pyrefly.toml && \
 > echo "x: str = 12" > $TMPDIR/inner/foo/bar.py && \
 > echo "import foo.bar; y: int = foo.bar.x" > $TMPDIR/inner/baz/quux.py && \
 > $PYREFLY check --python-version 3.13.0 $TMPDIR/inner/baz/quux.py --output-format=min-text
@@ -14,9 +15,10 @@ $ mkdir -p $TMPDIR/inner/foo && mkdir -p $TMPDIR/inner/baz && \
 ## We can do our own globbing
 
 ```scrut
-$ echo "x: str = 12" > $TMPDIR/glob1.py && \
-> echo "x: str = 12" > $TMPDIR/glob2.py && \
-> $PYREFLY check --python-version 3.13.0 "$TMPDIR/glob*.py" --output-format=min-text
+$ mkdir $TMPDIR/globbing && touch $TMPDIR/globbing/pyrefly.toml && \
+> echo "x: str = 12" > $TMPDIR/globbing/glob1.py && \
+> echo "x: str = 12" > $TMPDIR/globbing/glob2.py && \
+> $PYREFLY check --python-version 3.13.0 "$TMPDIR/globbing/glob*.py" --output-format=min-text
 */glob*.py:1:* (glob)
 */glob*.py:1:* (glob)
 [1]
@@ -107,6 +109,7 @@ $ mkdir $TMPDIR/test-stubs && touch $TMPDIR/test-stubs/utils.pyi && touch $TMPDI
 
 ```scrut
 $ mkdir $TMPDIR/pyi-order && mkdir $TMPDIR/pyi-order/pyi && \
+> touch $TMPDIR/pyi-order/pyrefly.toml && \
 > echo "x: int = 1" > $TMPDIR/pyi-order/pyi/lib.pyi && \
 > mkdir $TMPDIR/pyi-order/py && echo "x: str = '1'" > $TMPDIR/pyi-order/py/lib.py && \
 > echo "from typing_extensions import reveal_type; from lib import x; reveal_type(x)" > $TMPDIR/pyi-order/test.py && \
