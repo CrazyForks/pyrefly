@@ -307,8 +307,6 @@ use crate::lsp::non_wasm::queue::LspEvent;
 use crate::lsp::non_wasm::queue::LspQueue;
 use crate::lsp::non_wasm::safe_delete_file::safe_delete_file_code_action;
 use crate::lsp::non_wasm::stdlib::is_python_stdlib_file;
-use crate::lsp::non_wasm::stdlib::no_config_severity_override;
-use crate::lsp::non_wasm::stdlib::should_show_error_for_display_mode;
 use crate::lsp::non_wasm::stdlib::should_show_stdlib_error;
 use crate::lsp::non_wasm::transaction_manager::TransactionManager;
 use crate::lsp::non_wasm::type_hierarchy::collect_class_defs;
@@ -335,7 +333,6 @@ use crate::lsp::wasm::provide_type::provide_type;
 use crate::module::bundled::BundledStub;
 use crate::state::load::Load;
 use crate::state::load::LspFile;
-use crate::state::lsp::DisplayTypeErrors;
 use crate::state::lsp::FindDefinitionItemWithDocstring;
 use crate::state::lsp::FindPreference;
 use crate::state::lsp::ImportBehavior;
@@ -3525,26 +3522,10 @@ impl Server {
                 return None;
             }
 
-            // Check if we should filter based on error kind for ErrorMissingImports mode
-            let display_type_errors_mode = self
-                .workspaces
-                .get_with(path.to_path_buf(), |(_, w)| w.display_type_errors)
-                .unwrap_or_default();
-
-            if !should_show_error_for_display_mode(e, display_type_errors_mode, type_error_status) {
-                return None;
-            }
-
-            // In NoConfigFile mode, downgrade certain error kinds to Warn severity
-            // so users without a config file see critical issues as warnings.
-            let overridden;
-            let e = match no_config_severity_override(e, type_error_status) {
-                Some(severity) => {
-                    overridden = e.with_severity(severity);
-                    &overridden
-                }
-                None => e,
-            };
+            // The resolved config's preset (Basic / Off / migrated) is
+            // the single source of truth for which errors are silenced;
+            // the `typeCheckingMode` IDE setting reaches us through the
+            // resolver at config synthesis time, not per-diagnostic.
 
             if let Some(lsp_file) = open_files.get(&path)
                 && config.project_includes.covers(&path)
@@ -3600,33 +3581,30 @@ impl Server {
             .state
             .config_finder()
             .python_file(handle.module_kind(), handle.path());
-        match self
+
+        // Workspace-scoped kill switch is a clean boolean. `true`
+        // suppresses every diagnostic; `false` defers to the resolved
+        // config and any in-config `disable-type-errors-in-ide` flag.
+        // Legacy `displayTypeErrors = "force-off"` is mapped onto
+        // `true` by `apply_client_configuration`.
+        if self
             .workspaces
-            .get_with(path.to_path_buf(), |(_, w)| w.display_type_errors)
+            .get_with(path.to_path_buf(), |(_, w)| w.disable_type_errors)
         {
-            Some(DisplayTypeErrors::ForceOn) => TypeErrorDisplayStatus::EnabledInIdeConfig,
-            Some(DisplayTypeErrors::ErrorMissingImports) => {
-                TypeErrorDisplayStatus::EnabledInIdeConfig
-            }
-            Some(DisplayTypeErrors::ForceOff) => TypeErrorDisplayStatus::DisabledInIdeConfig,
-            Some(DisplayTypeErrors::Default) | None => match &config.source {
-                // In this case, we don't have a config file.
-                ConfigSource::Synthetic => TypeErrorDisplayStatus::NoConfigFile,
-                // In this case, we have a config file like mypy.ini, or a pyproject.toml
-                // with Python tool sections but no [tool.pyrefly]. We don't parse it for
-                // pyrefly config, so treat it as if we don't have any config.
-                ConfigSource::PythonToolMarker(_)
-                | ConfigSource::Marker(_)
-                | ConfigSource::FailedParse(_) => TypeErrorDisplayStatus::NoConfigFile,
-                // We actually have a pyrefly.toml, so we can decide based on the config.
-                ConfigSource::File(_) => {
-                    if config.disable_type_errors_in_ide(path) {
-                        TypeErrorDisplayStatus::DisabledInConfigFile
-                    } else {
-                        TypeErrorDisplayStatus::EnabledInConfigFile
-                    }
+            return TypeErrorDisplayStatus::DisabledInIdeConfig;
+        }
+        match &config.source {
+            ConfigSource::Synthetic
+            | ConfigSource::PythonToolMarker(_)
+            | ConfigSource::Marker(_)
+            | ConfigSource::FailedParse(_) => TypeErrorDisplayStatus::NoConfigFile,
+            ConfigSource::File(_) => {
+                if config.disable_type_errors_in_ide(path) {
+                    TypeErrorDisplayStatus::DisabledInConfigFile
+                } else {
+                    TypeErrorDisplayStatus::EnabledInConfigFile
                 }
-            },
+            }
         }
     }
 

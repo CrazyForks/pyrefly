@@ -14,8 +14,6 @@ use std::path::Path;
 #[cfg(unix)]
 use std::path::PathBuf;
 
-use lsp_types::DocumentDiagnosticReport;
-use lsp_types::DocumentDiagnosticReportResult;
 use lsp_types::Url;
 use lsp_types::notification::DidChangeWorkspaceFolders;
 use lsp_types::request::WorkspaceConfiguration;
@@ -801,8 +799,14 @@ fn test_disable_type_errors_default_workspace() {
     interaction.shutdown().expect("Failed to shutdown");
 }
 
+/// `disable-type-errors-in-ide = true` in `pyrefly.toml` suppresses
+/// IDE diagnostics for files in the project. Legacy `displayTypeErrors
+/// = "force-on"` does NOT pierce this flag — `disableTypeErrors` is a
+/// clean two-state boolean and the project's committed config wins.
+/// This test pins that contract so a future change can't silently
+/// re-introduce a force-show override.
 #[test]
-fn test_disable_type_errors_config() {
+fn test_disable_type_errors_in_config_wins_over_force_on() {
     let root = get_test_files_root();
     let test_files_root = root.path().join("disable_type_error_in_config");
     let scope_uri = Url::from_file_path(test_files_root.as_path()).unwrap();
@@ -818,6 +822,7 @@ fn test_disable_type_errors_config() {
 
     interaction.client.did_open("type_errors.py");
 
+    // Initial: in-config disable suppresses errors.
     interaction
         .client
         .diagnostic("type_errors.py")
@@ -826,6 +831,10 @@ fn test_disable_type_errors_config() {
 
     interaction.client.did_change_configuration();
 
+    // After legacy `force-on`: still suppressed. The legacy mapping
+    // sets `typeCheckingMode = "default"` (which doesn't apply because
+    // the project has a real config) and is a no-op on
+    // `disableTypeErrors`. The in-config disable wins.
     interaction
         .client
         .expect_configuration_request(Some(vec![&scope_uri]))
@@ -834,7 +843,7 @@ fn test_disable_type_errors_config() {
     interaction
         .client
         .diagnostic("type_errors.py")
-        .expect_response(get_diagnostics_result())
+        .expect_response(json!({"items": [], "kind": "full"}))
         .expect("Failed to receive expected response");
 
     interaction.shutdown().expect("Failed to shutdown");
@@ -1148,57 +1157,6 @@ fn test_initialization_options_without_workspace_folders() {
         .client
         .definition("foo.py", 6, 16)
         .expect_response(json!(null))
-        .expect("Failed to receive expected response");
-
-    interaction.shutdown().expect("Failed to shutdown");
-}
-
-#[test]
-fn test_error_missing_imports_mode() {
-    let test_files_root = get_test_files_root();
-    let root_path = test_files_root.path().join("error_missing_imports_mode");
-    let mut interaction = LspInteraction::new();
-    interaction.set_root(root_path.clone());
-    interaction
-        .initialize(InitializeSettings {
-            configuration: Some(Some(
-                json!([{"pyrefly": {"displayTypeErrors": "error-missing-imports"}}]),
-            )),
-            ..Default::default()
-        })
-        .expect("Failed to initialize");
-
-    interaction.client.did_open("test_file.py");
-
-    interaction
-        .client
-        .diagnostic("test_file.py")
-        .expect_response_with(|response| {
-            if let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
-                full_report,
-            )) = response
-            {
-                let items = &full_report.full_document_diagnostic_report.items;
-
-                let has_missing_import = items.iter().any(|item| {
-                    item.code.as_ref().and_then(|c| match c {
-                        lsp_types::NumberOrString::String(s) => Some(s.as_str()),
-                        _ => None,
-                    }) == Some("missing-import")
-                });
-
-                let has_bad_assignment = items.iter().any(|item| {
-                    item.code.as_ref().and_then(|c| match c {
-                        lsp_types::NumberOrString::String(s) => Some(s.as_str()),
-                        _ => None,
-                    }) == Some("bad-assignment")
-                });
-
-                has_missing_import && !has_bad_assignment
-            } else {
-                false
-            }
-        })
         .expect("Failed to receive expected response");
 
     interaction.shutdown().expect("Failed to shutdown");
