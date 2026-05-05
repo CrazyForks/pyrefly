@@ -27,9 +27,12 @@ export async function updateStatusBar(client: LanguageClient) {
   }
   let status;
   try {
+    // The server only reads `uri` from the payload (deserializes as
+    // `TextDocumentIdentifier`), so send just that — no need to ship
+    // the file text on every status-bar refresh.
     status = await client.sendRequest(
       'pyrefly/textDocument/typeErrorDisplayStatus',
-      client.code2ProtocolConverter.asTextDocumentItem(document),
+      client.code2ProtocolConverter.asTextDocumentIdentifier(document),
     );
   } catch {
     statusBarItem?.hide();
