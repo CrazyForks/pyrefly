@@ -79,6 +79,7 @@ use pyrefly::lsp::non_wasm::protocol::Notification;
 use pyrefly::lsp::non_wasm::protocol::Request;
 use pyrefly::lsp::non_wasm::protocol::Response;
 use pyrefly::lsp::non_wasm::server::Connection;
+use pyrefly::lsp::non_wasm::server::TypeErrorDisplayStatusRequest;
 use pyrefly::lsp::wasm::provide_type::ProvideType;
 use pyrefly_util::fs_anyhow::read_to_string;
 use pyrefly_util::lock::FinishHandle;
@@ -1894,7 +1895,7 @@ impl LspInteraction {
         let id = self.client.next_request_id();
         self.client.send_message(Message::Request(Request {
             id: id.clone(),
-            method: "pyrefly/textDocument/typeErrorDisplayStatus".to_owned(),
+            method: TypeErrorDisplayStatusRequest::METHOD.to_owned(),
             params: json!({
                 "uri": cell_uri
             }),

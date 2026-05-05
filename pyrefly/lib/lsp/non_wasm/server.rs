@@ -375,7 +375,7 @@ pub enum DidCloseKind {
     TextDocument,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TypeErrorDisplayStatus {
     DisabledInIdeConfig,
@@ -452,12 +452,12 @@ fn negotiate_type_error_display_status_version(
 /// V2 wire shape for the status-bar response. `label` drives the
 /// status-bar parenthetical (`Pyrefly (Basic)`, `Pyrefly (Legacy)`,
 /// …); `null` means show plain `Pyrefly`. `tooltip` is markdown.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeErrorDisplayStatusV2 {
     /// Always `"v2"`. Lets the client dispatch on `response.version`
     /// once it has decoded the response as an object.
-    pub version: &'static str,
+    pub version: String,
     /// Preset name to render in parentheses, or `None` for plain
     /// `Pyrefly`. The parenthetical is only shown when the preset was
     /// chosen automatically — if the user explicitly set
@@ -471,25 +471,28 @@ pub struct TypeErrorDisplayStatusV2 {
     pub docs_url: String,
 }
 
-/// Internal sum type covering both wire shapes. Custom `Serialize`
-/// (rather than `#[serde(untagged)]`) so V1 emits the enum's existing
-/// kebab-case bare string and V2 emits the V2 struct verbatim.
-#[derive(Clone, Debug)]
+/// Internal sum type covering both wire shapes. `#[serde(untagged)]`
+/// dispatches by shape: V1 deserializes from / serializes to the V1
+/// kebab-case bare string, V2 from / to the V2 struct.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
 pub enum TypeErrorDisplayStatusResponse {
     V1(TypeErrorDisplayStatus),
     V2(TypeErrorDisplayStatusV2),
 }
 
-impl Serialize for TypeErrorDisplayStatusResponse {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::V1(s) => s.serialize(serializer),
-            Self::V2(v) => v.serialize(serializer),
-        }
-    }
+/// Type-level binding for the custom
+/// `pyrefly/textDocument/typeErrorDisplayStatus` LSP request. Mirrors
+/// the `lsp_types::request::Request` pattern used by stock methods
+/// (e.g. `Completion`, `ProvideType`) so the wire method name lives in
+/// one place — call sites reference `TypeErrorDisplayStatusRequest::METHOD`
+/// instead of duplicating the string literal.
+pub enum TypeErrorDisplayStatusRequest {}
+
+impl lsp_types::request::Request for TypeErrorDisplayStatusRequest {
+    type Params = TextDocumentIdentifier;
+    type Result = TypeErrorDisplayStatusResponse;
+    const METHOD: &'static str = "pyrefly/textDocument/typeErrorDisplayStatus";
 }
 
 /// URL referenced from the V2 tooltip / docs link. Module-level so the
@@ -507,7 +510,7 @@ const STATUS_BAR_DOCS_URL: &str = "https://pyrefly.org/en/docs/IDE/";
 /// `derive_v2_response` (with `Basic` label + `pyrefly init` tooltip).
 fn default_v2_response() -> TypeErrorDisplayStatusV2 {
     TypeErrorDisplayStatusV2 {
-        version: "v2",
+        version: "v2".to_owned(),
         label: None,
         tooltip: String::new(),
         docs_url: STATUS_BAR_DOCS_URL.to_owned(),
@@ -532,7 +535,7 @@ fn derive_v2_response(
 ) -> TypeErrorDisplayStatusV2 {
     if workspace_disable_type_errors {
         return TypeErrorDisplayStatusV2 {
-            version: "v2",
+            version: "v2".to_owned(),
             label: Some("Errors Off".to_owned()),
             tooltip:
                 "Pyrefly diagnostics are suppressed by [`python.pyrefly.disableTypeErrors`](command:workbench.action.openSettings?[\"python.pyrefly.disableTypeErrors\"]).\n\nUnset this setting to re-enable diagnostics."
@@ -552,7 +555,7 @@ fn derive_v2_response(
                 .map(type_checking_mode_kebab)
                 .unwrap_or("<unknown>");
             TypeErrorDisplayStatusV2 {
-                version: "v2",
+                version: "v2".to_owned(),
                 label: None,
                 tooltip: format!(
                     "Pyrefly is using the [`python.pyrefly.typeCheckingMode`](command:workbench.action.openSettings?[\"python.pyrefly.typeCheckingMode\"]) setting (currently: `{value}`) because no `pyrefly.toml` was found.\n\nRun `pyrefly init` to continue setting up Pyrefly.",
@@ -580,7 +583,7 @@ fn derive_v2_response(
                 ),
             };
             TypeErrorDisplayStatusV2 {
-                version: "v2",
+                version: "v2".to_owned(),
                 label: Some(label.to_owned()),
                 tooltip: format!(
                     "Pyrefly is using settings imported from {location} (preset: {preset}).\n\nRun `pyrefly init` to continue setting up Pyrefly.",
@@ -589,7 +592,7 @@ fn derive_v2_response(
             }
         }
         Some(SynthesizedPresetReason::NoNearbyConfig) => TypeErrorDisplayStatusV2 {
-            version: "v2",
+            version: "v2".to_owned(),
             label: Some("Basic".to_owned()),
             tooltip:
                 "Pyrefly is running with the `basic` preset because no `pyrefly.toml` was found.\n\nRun `pyrefly init` to continue setting up Pyrefly."
@@ -612,7 +615,7 @@ fn derive_v2_response(
                     "this project's `pyrefly.toml`"
                 };
                 TypeErrorDisplayStatusV2 {
-                    version: "v2",
+                    version: "v2".to_owned(),
                     label: Some("Errors Off".to_owned()),
                     tooltip: format!(
                         "Pyrefly diagnostics are suppressed by `disable-type-errors-in-ide` in {location}.\n\nRemove this config to re-enable diagnostics.",
@@ -621,7 +624,7 @@ fn derive_v2_response(
                 }
             }
             ConfigSource::File(_) => TypeErrorDisplayStatusV2 {
-                version: "v2",
+                version: "v2".to_owned(),
                 label: None,
                 tooltip: String::new(),
                 docs_url: STATUS_BAR_DOCS_URL.to_owned(),
@@ -3203,7 +3206,7 @@ impl Server {
                         .docstring_ranges(&transaction, &text_document)
                         .unwrap_or_default();
                     self.send_response(new_response(x.id, Ok(ranges)));
-                } else if &x.method == "pyrefly/textDocument/typeErrorDisplayStatus" {
+                } else if &x.method == TypeErrorDisplayStatusRequest::METHOD {
                     let text_document: TextDocumentIdentifier = serde_json::from_value(x.params)?;
                     let response = if let Some(path) =
                         self.path_for_uri_or_notebook_cell(&text_document.uri)
