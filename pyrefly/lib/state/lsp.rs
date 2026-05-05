@@ -188,6 +188,32 @@ pub enum DisplayTypeErrors {
     ErrorMissingImports,
 }
 
+/// VS Code workspace setting `python.pyrefly.typeCheckingMode`.
+/// Internally this enum only governs files that aren't covered by a
+/// real `pyrefly.toml` or `[tool.pyrefly]` section — those files always
+/// take precedence. The public name drops the "unconfigured" qualifier
+/// to avoid pushing the concept into user-facing surfaces.
+///
+/// Replaces the older `displayTypeErrors` setting (which the server
+/// still accepts for backwards compatibility — see
+/// `Workspaces::apply_client_configuration`).
+///
+/// `Auto` (the default) lets the server auto-detect a nearby
+/// mypy/pyright config and migrate it; otherwise it falls back to the
+/// `Basic` preset. The other variants force a specific preset and skip
+/// auto-detection.
+#[derive(Clone, Copy, Debug, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TypeCheckingMode {
+    #[default]
+    Auto,
+    Off,
+    Basic,
+    Legacy,
+    Default,
+    Strict,
+}
+
 const RESOLVE_EXPORT_INITIAL_GAS: Gas = Gas::new(100);
 pub const MIN_CHARACTERS_TYPED_AUTOIMPORT: usize = 3;
 
