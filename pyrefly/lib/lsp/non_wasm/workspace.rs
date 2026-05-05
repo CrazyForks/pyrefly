@@ -15,6 +15,7 @@ use lsp_types::Url;
 use lsp_types::WorkspaceFoldersChangeEvent;
 use pyrefly_build::SourceDatabase;
 use pyrefly_config::config::FallbackSearchPath;
+use pyrefly_config::resolve_unconfigured::UnconfiguredOverride;
 use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::arc_id::WeakArcId;
 use pyrefly_util::lock::Mutex;
@@ -29,6 +30,7 @@ use tracing::warn;
 
 use crate::commands::config_finder::ConfigConfigurer;
 use crate::commands::config_finder::ConfigConfigurerWrapper;
+use crate::commands::config_finder::apply_unconfigured_resolver_if_applicable;
 use crate::commands::config_finder::standard_config_finder;
 use crate::config::config::ConfigFile;
 use crate::config::config::ConfigSource;
@@ -100,6 +102,27 @@ impl ConfigConfigurer for WorkspaceConfigConfigurer {
         mut config: ConfigFile,
         mut errors: Vec<pyrefly_config::finder::ConfigError>,
     ) -> (ArcId<ConfigFile>, Vec<pyrefly_config::finder::ConfigError>) {
+        // The unconfigured resolver runs against the workspace's chosen
+        // `typeCheckingMode` (or `Auto` if unset). Run it *before* the
+        // workspace overrides below so workspace-level
+        // search-paths/python-info still apply on top of the resolved
+        // base.
+        //
+        // Pass through `get_with` even when `root` is `None` (rootless
+        // in-memory paths, the parent-less fallback config in
+        // `standard_config_finder`): an empty `PathBuf` matches no
+        // workspace prefix, so `get_with` falls back to the default
+        // workspace — and the default's `typeCheckingMode` should still
+        // apply.
+        let workspace_override =
+            self.0
+                .get_with(root.map(Path::to_owned).unwrap_or_default(), |(_, w)| {
+                    w.type_checking_mode
+                        .map(Into::into)
+                        .unwrap_or(UnconfiguredOverride::Auto)
+                });
+        apply_unconfigured_resolver_if_applicable(&mut config, root, workspace_override);
+
         if let Some(dir) = root {
             self.0.get_with(dir.to_owned(), |(workspace_root, w)| {
                 if let Some(workspace_config_path) = &w.workspace_config {

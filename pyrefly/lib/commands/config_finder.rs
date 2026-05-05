@@ -8,7 +8,6 @@
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::LazyLock;
 
 use dupe::Dupe;
 use pyrefly_config::args::ConfigOverrideArgs;
@@ -85,7 +84,9 @@ impl ConfigConfigurer for DefaultConfigConfigurer {
         mut config: ConfigFile,
         _: Vec<pyrefly_config::finder::ConfigError>,
     ) -> (ArcId<ConfigFile>, Vec<ConfigError>) {
-        apply_unconfigured_resolver_if_applicable(&mut config, root);
+        // The CLI never has an explicit IDE override, so always pass
+        // `Auto` and let the resolver auto-detect.
+        apply_unconfigured_resolver_if_applicable(&mut config, root, UnconfiguredOverride::Auto);
         config.configure();
         (ArcId::new(config), Vec::new())
     }
@@ -93,17 +94,16 @@ impl ConfigConfigurer for DefaultConfigConfigurer {
 
 /// If `config` was synthesized (no real `pyrefly.toml` / `[tool.pyrefly]`)
 /// and has not yet been touched by the unconfigured resolver, replace it
-/// with `resolve_unconfigured_config(root, Auto)` while preserving the
+/// with `resolve_unconfigured_config(root, over)` while preserving the
 /// project layout fields the synthesized config already established
 /// (`source`, `import_root`, `fallback_search_path`, default
 /// `project_includes`).
 ///
 /// No-op for configs loaded from a real file or already carrying a
 /// preset/reason — the function is idempotent and safe to call from
-/// every configurer. Both [`DefaultConfigConfigurer`] and
-/// [`DefaultConfigConfigurerWithOverrides`] route through it so the CLI
-/// produces the same synthesized config regardless of whether the caller
-/// passed `--` overrides. `get_project_config_for_current_dir` invokes
+/// every configurer. Used by [`DefaultConfigConfigurer`] (CLI) and
+/// `WorkspaceConfigConfigurer` (LSP) so both paths produce identical
+/// synthesized configs. `get_project_config_for_current_dir` invokes
 /// it directly on the `init_at_root` fallback so that `pyrefly check`
 /// (project mode) reaches the resolver too — without that direct call,
 /// project-mode configs would skip the migration / preset wiring that
@@ -111,6 +111,7 @@ impl ConfigConfigurer for DefaultConfigConfigurer {
 pub(crate) fn apply_unconfigured_resolver_if_applicable(
     config: &mut ConfigFile,
     root: Option<&Path>,
+    over: UnconfiguredOverride,
 ) {
     if matches!(config.source, ConfigSource::File(_))
         || config.preset.is_some()
@@ -121,7 +122,7 @@ pub(crate) fn apply_unconfigured_resolver_if_applicable(
     let Some(root_dir) = root else {
         return;
     };
-    let mut resolved = resolve_unconfigured_config(root_dir, UnconfiguredOverride::Auto);
+    let mut resolved = resolve_unconfigured_config(root_dir, over);
     // Carry over the project-layout fields the synthesized config already
     // computed.
     resolved.import_root = config.import_root.take();
@@ -160,7 +161,7 @@ impl ConfigConfigurer for DefaultConfigConfigurerWithOverrides {
         mut config: ConfigFile,
         mut errors: Vec<ConfigError>,
     ) -> (ArcId<ConfigFile>, Vec<ConfigError>) {
-        apply_unconfigured_resolver_if_applicable(&mut config, root);
+        apply_unconfigured_resolver_if_applicable(&mut config, root, UnconfiguredOverride::Auto);
         let (c, mut configure_errors) = self.args.override_config(config);
         if self.ignore_errors {
             errors.clear();
@@ -213,24 +214,40 @@ pub fn standard_config_finder(
     let cache_ancestors: Arc<DirectoryRelativeFallbackSearchPathCache> =
         Arc::new(DirectoryRelativeFallbackSearchPathCache::new(None));
 
+    // Single-slot cache for the synthesized config used by parent-less
+    // paths (the rare `/`, empty memory paths, etc.). Populated lazily
+    // on first lookup, cleared by `clear_extra_caches` on
+    // `did_change_configuration` — the configurer reads workspace
+    // state (e.g. `typeCheckingMode`), so the cache must reset when
+    // that state changes or it would freeze the override at whatever
+    // value was active on first call.
+    let cache_empty: Arc<Mutex<Option<ArcId<ConfigFile>>>> = Arc::new(Mutex::new(None));
+
     let clear_extra_caches = {
         let cache_one = cache_one.dupe();
         let cache_parents = cache_parents.dupe();
         let cache_ancestors = cache_ancestors.dupe();
+        let cache_empty = cache_empty.dupe();
         Box::new(move || {
             cache_one.lock().clear();
             cache_parents.lock().clear();
             cache_ancestors.clear();
+            *cache_empty.lock() = None;
             GENERATED_FILE_CONFIG_OVERRIDE.write().clear();
         })
     };
 
-    let empty = LazyLock::new(move || {
-        let (config, errors) = configure3.configure(None, ConfigFile::default(), vec![]);
-        // Since this is a config we generated, these are likely internal errors.
-        debug_log(errors);
-        config
-    });
+    let empty = move || {
+        cache_empty
+            .lock()
+            .get_or_insert_with(|| {
+                let (config, errors) = configure3.configure(None, ConfigFile::default(), vec![]);
+                // Since this is a config we generated, these are likely internal errors.
+                debug_log(errors);
+                config
+            })
+            .dupe()
+    };
 
     ConfigFinder::new_custom(
         Box::new(move |_, path| {
@@ -276,7 +293,7 @@ pub fn standard_config_finder(
                             if let Some(path) = x.parent() {
                                 path
                             } else {
-                                return empty.dupe();
+                                return empty();
                             }
                         }
                         ModulePathDetails::Namespace(x) => x.as_path(),
@@ -776,6 +793,48 @@ mod tests {
             Some(SynthesizedPresetReason::Migrated(
                 MigratedFromKind::Pyright(MigratedConfigSource::DedicatedFile,)
             )),
+        );
+    }
+
+    /// `standard_config_finder`'s parent-less fallback (the `empty`
+    /// cache) must invalidate when `ConfigFinder::clear()` runs. The
+    /// LSP triggers `clear()` on `did_change_configuration`, and a
+    /// stale `empty` would freeze the workspace's `typeCheckingMode`
+    /// at whatever it was on first lookup — making `Auto → Strict`
+    /// (or any other live update) silently invisible for any module
+    /// that resolves through `empty`.
+    ///
+    /// We exercise the bug with a configurer that reads a mutable
+    /// `Preset` from shared state, mimicking how
+    /// `WorkspaceConfigConfigurer` reads `workspace.type_checking_mode`.
+    #[test]
+    fn test_empty_cache_invalidates_on_clear() {
+        use std::sync::Mutex;
+
+        use pyrefly_config::base::Preset;
+
+        let workspace_preset = Arc::new(Mutex::new(Preset::Strict));
+        let workspace_preset_for_closure = workspace_preset.clone();
+        let finder = TestConfigurer::new_standard(move |_, mut config, _| {
+            config.preset = Some(*workspace_preset_for_closure.lock().unwrap());
+            (ArcId::new(config), Vec::new())
+        });
+
+        // `/` has no parent, so `python_file` routes to `empty.dupe()`.
+        let path = ModulePath::filesystem(PathBuf::from("/"));
+        let cfg1 = finder.python_file(ModuleNameWithKind::guaranteed(ModuleName::unknown()), &path);
+        assert_eq!(cfg1.preset, Some(Preset::Strict));
+
+        // Mutate the workspace state and tell the finder to reload —
+        // the same sequence the LSP runs on a config-change event.
+        *workspace_preset.lock().unwrap() = Preset::Basic;
+        finder.clear();
+
+        let cfg2 = finder.python_file(ModuleNameWithKind::guaranteed(ModuleName::unknown()), &path);
+        assert_eq!(
+            cfg2.preset,
+            Some(Preset::Basic),
+            "`empty` cache should reset on `ConfigFinder::clear`",
         );
     }
 }

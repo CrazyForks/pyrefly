@@ -214,6 +214,20 @@ pub enum TypeCheckingMode {
     Strict,
 }
 
+impl From<TypeCheckingMode> for pyrefly_config::resolve_unconfigured::UnconfiguredOverride {
+    fn from(b: TypeCheckingMode) -> Self {
+        use pyrefly_config::resolve_unconfigured::UnconfiguredOverride as Inner;
+        match b {
+            TypeCheckingMode::Auto => Inner::Auto,
+            TypeCheckingMode::Off => Inner::Off,
+            TypeCheckingMode::Basic => Inner::Basic,
+            TypeCheckingMode::Legacy => Inner::Legacy,
+            TypeCheckingMode::Default => Inner::Default,
+            TypeCheckingMode::Strict => Inner::Strict,
+        }
+    }
+}
+
 const RESOLVE_EXPORT_INITIAL_GAS: Gas = Gas::new(100);
 pub const MIN_CHARACTERS_TYPED_AUTOIMPORT: usize = 3;
 

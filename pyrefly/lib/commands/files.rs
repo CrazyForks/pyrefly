@@ -12,6 +12,7 @@ use anyhow::Context as _;
 use clap::Parser;
 use dupe::Dupe;
 use pyrefly_config::args::ConfigOverrideArgs;
+use pyrefly_config::resolve_unconfigured::UnconfiguredOverride;
 use pyrefly_util::absolutize::Absolutize as _;
 use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::args::clap_env;
@@ -133,7 +134,11 @@ pub fn get_project_config_for_current_dir(
         // file mode but ignored here.
         let mut synthesized =
             ConfigFile::init_at_root(&current_dir, &ProjectLayout::new(&current_dir), false);
-        apply_unconfigured_resolver_if_applicable(&mut synthesized, Some(&current_dir));
+        apply_unconfigured_resolver_if_applicable(
+            &mut synthesized,
+            Some(&current_dir),
+            UnconfiguredOverride::Auto,
+        );
         let (config, errors) = args.override_config(synthesized);
         // Since this is a config we generated, these are likely internal errors.
         debug_log(errors);
