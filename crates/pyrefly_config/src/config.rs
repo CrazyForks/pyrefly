@@ -68,6 +68,7 @@ use crate::error::ErrorConfig;
 use crate::error::ErrorDisplayConfig;
 use crate::error_kind::Severity;
 use crate::finder::ConfigError;
+use crate::migration::run::MigratedFromKind;
 use crate::module_wildcard::Match;
 use crate::pyproject::PyProject;
 
@@ -86,6 +87,29 @@ impl SubConfig {
     fn rewrite_with_path_to_config(&mut self, config_root: &Path) {
         self.matches = self.matches.clone().from_root(config_root);
     }
+}
+
+/// Why a `ConfigFile` was synthesized rather than loaded from a real config
+/// on disk. Set by `resolve_unconfigured_config` and read by the LSP status
+/// bar and the CLI upsell to explain to the user how Pyrefly chose its
+/// behavior in the absence of a `pyrefly.toml` / `[tool.pyrefly]` section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SynthesizedPresetReason {
+    /// Nothing migrate-able was found near the source file. Pyrefly fell
+    /// back to the basic preset.
+    NoNearbyConfig,
+    /// A mypy or pyright config was found nearby and its settings
+    /// were migrated in memory. The wrapped `MigratedFromKind`
+    /// records both which type checker (mypy → resulting preset is
+    /// `Legacy`; pyright → `Default`) and which kind of file the
+    /// settings physically lived in (a dedicated `mypy.ini` /
+    /// `pyrightconfig.json` vs. a `[tool.mypy]` / `[tool.pyright]`
+    /// section in `pyproject.toml`). Both axes affect the surfaced
+    /// upsell wording.
+    Migrated(MigratedFromKind),
+    /// The IDE workspace setting `typeCheckingMode` was set to a
+    /// specific preset, overriding any auto-detection.
+    IdeOverride,
 }
 
 /// Where did this config come from?
@@ -586,6 +610,15 @@ pub struct ConfigFile {
     /// name `foo.cinc`, not `foo`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_file_extensions: Vec<String>,
+
+    /// Runtime-only metadata. Populated by `resolve_unconfigured_config`
+    /// when this `ConfigFile` was synthesized rather than loaded from a
+    /// `pyrefly.toml` / `[tool.pyrefly]` section. Used by the status bar
+    /// (LSP) and the upsell message (CLI) to explain to the user why
+    /// Pyrefly is behaving the way it is. Never serialized.
+    #[serde(skip)]
+    #[derivative(PartialEq = "ignore")]
+    pub synthesized_preset_reason: Option<SynthesizedPresetReason>,
 }
 
 impl Default for ConfigFile {
@@ -620,6 +653,7 @@ impl Default for ConfigFile {
             output_format: None,
             skip_lsp_config_indexing: false,
             extra_file_extensions: Vec::new(),
+            synthesized_preset_reason: None,
         }
     }
 }
@@ -1703,6 +1737,7 @@ mod tests {
                 min_severity: None,
                 skip_lsp_config_indexing: false,
                 extra_file_extensions: Vec::new(),
+                synthesized_preset_reason: None,
             }
         );
     }
@@ -1947,6 +1982,7 @@ mod tests {
             min_severity: None,
             skip_lsp_config_indexing: false,
             extra_file_extensions: Vec::new(),
+            synthesized_preset_reason: None,
         };
 
         let current_dir = std::env::current_dir().unwrap();
@@ -2010,6 +2046,7 @@ mod tests {
             min_severity: None,
             skip_lsp_config_indexing: false,
             extra_file_extensions: Vec::new(),
+            synthesized_preset_reason: None,
         };
         assert_eq!(config, expected_config);
     }
