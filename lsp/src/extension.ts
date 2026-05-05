@@ -22,7 +22,11 @@ import {
   ServerOptions,
 } from 'vscode-languageclient/node';
 import {PythonExtension} from '@vscode/python-extension';
-import {updateStatusBar, getStatusBarItem} from './status-bar';
+import {
+  TYPE_ERROR_DISPLAY_STATUS_VERSION,
+  getStatusBarItem,
+  updateStatusBar,
+} from './status-bar';
 import {runDocstringFoldingCommand} from './docstring';
 import {registerCodeLensCommands} from './codeLens';
 import {
@@ -124,11 +128,34 @@ export async function activate(context: ExtensionContext) {
     command: path === '' ? bundledPyreflyPath.fsPath : path,
     args: args,
   };
-  let rawInitialisationOptions = vscode.workspace.getConfiguration('pyrefly');
+  // `getConfiguration` returns a `WorkspaceConfiguration` proxy, not a
+  // plain object: spread (`{...cfg}`) and `Object.assign({}, cfg)` rely
+  // on own enumerable properties and may silently drop the configured
+  // values. JSON-roundtrip via the proxy's `toJSON` (the same path
+  // `vscode-languageclient` itself takes when serializing
+  // `initializationOptions`) gives us a faithful plain object to merge
+  // with.
+  const rawInitialisationOptions = JSON.parse(
+    JSON.stringify(vscode.workspace.getConfiguration('pyrefly') ?? {}),
+  );
+
+  // Opt into the V2 wire shape for the typeErrorDisplayStatus request.
+  // An older binary that doesn't know V2 still returns its V1 bare
+  // string when the field is absent / unrecognized, so declaring V2 is
+  // safe even against pre-V2 binaries — V1's bare-string response is
+  // distinguishable by shape (`typeof resp === 'string'`) and the V1
+  // renderer below handles it.
+  const initializationOptions = {
+    ...rawInitialisationOptions,
+    pyrefly: {
+      ...((rawInitialisationOptions as any).pyrefly ?? {}),
+      typeErrorDisplayStatusVersion: TYPE_ERROR_DISPLAY_STATUS_VERSION,
+    },
+  };
 
   // Options to control the language client
   let clientOptions: LanguageClientOptions = {
-    initializationOptions: rawInitialisationOptions,
+    initializationOptions,
     // Register the server for Python documents
     documentSelector: [
       {scheme: 'file', language: 'python'},

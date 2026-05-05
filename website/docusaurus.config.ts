@@ -302,6 +302,14 @@ const config: Config = {
                   component: '@site/src/pages/landingPage.tsx',
                   exact: true,
                 });
+                // Short vanity URL surfaced from the VS Code extension's
+                // status-bar tooltip and the CLI upsell. Points users at
+                // the install/onboarding docs.
+                addRoute({
+                  path: '/getting-started',
+                  component: '@site/src/pages/redirect-getting-started.tsx',
+                  exact: true,
+                });
               },
             };
         },
