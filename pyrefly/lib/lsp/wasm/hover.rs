@@ -270,15 +270,15 @@ fn position_is_in_docstring(
         }
         for stmt in body {
             match stmt {
-                Stmt::FunctionDef(func) => {
-                    if body_contains_docstring(func.body.as_slice(), position) {
-                        return true;
-                    }
+                Stmt::FunctionDef(func)
+                    if body_contains_docstring(func.body.as_slice(), position) =>
+                {
+                    return true;
                 }
-                Stmt::ClassDef(class_def) => {
-                    if body_contains_docstring(class_def.body.as_slice(), position) {
-                        return true;
-                    }
+                Stmt::ClassDef(class_def)
+                    if body_contains_docstring(class_def.body.as_slice(), position) =>
+                {
+                    return true;
                 }
                 _ => {}
             }

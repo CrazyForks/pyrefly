@@ -1033,10 +1033,7 @@ impl<'a> Transaction<'a> {
     pub fn get_transitive_rdeps(&self, handle: Handle) -> HashSet<Handle> {
         let mut transitive_rdeps = HashSet::new();
         let mut work_list = vec![handle];
-        loop {
-            let Some(handle) = work_list.pop() else {
-                break;
-            };
+        while let Some(handle) = work_list.pop() {
             if !transitive_rdeps.insert(handle.dupe()) {
                 continue;
             }
@@ -2438,8 +2435,8 @@ impl<'a> Transaction<'a> {
                 let deps: Vec<PathBuf> = module_data
                     .deps
                     .read()
-                    .iter()
-                    .flat_map(|(h, _)| included.get(&h.module()).cloned())
+                    .keys()
+                    .flat_map(|h| included.get(&h.module()).cloned())
                     .collect();
                 graph.push((entry_path.clone(), deps));
             }

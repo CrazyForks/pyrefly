@@ -232,9 +232,7 @@ fn collapse_literals(
                     Lit::Bool(_) if has_true && has_false => return false,
                     Lit::Str(_) if has_literal_string => return false,
                     Lit::Enum(lit_enum) if enums_to_delete.contains(&lit_enum.class) => {
-                        if enums_to_delete.contains(&lit_enum.class) {
-                            return false;
-                        }
+                        return false;
                     }
                     _ => {}
                 }

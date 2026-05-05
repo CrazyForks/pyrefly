@@ -725,11 +725,9 @@ struct LspProgressState {
 
 impl LspProgressState {
     fn snapshot(&mut self) -> (String, u32) {
-        let mut percentage = if self.started == 0 {
-            0
-        } else {
-            (((self.finished * 100) / self.started) as u32).min(99)
-        };
+        let mut percentage = (self.finished * 100)
+            .checked_div(self.started)
+            .map_or(0, |v| (v as u32).min(99));
         if percentage < self.last_percentage {
             percentage = self.last_percentage;
         }
@@ -1134,10 +1132,7 @@ pub fn initialize_start(
     sender: &Sender<Message>,
     reader: &mut MessageReader,
 ) -> anyhow::Result<Option<(RequestId, InitializeInfo)>> {
-    loop {
-        let Some(msg) = reader.recv() else {
-            break;
-        };
+    while let Some(msg) = reader.recv() {
         match msg {
             Message::Request(x) => {
                 if x.method == Initialize::METHOD {
@@ -1224,10 +1219,7 @@ pub fn initialize_finish<C: Serialize>(
     if sender.send(response.into()).is_err() {
         return Ok(false);
     }
-    loop {
-        let Some(msg) = reader.recv() else {
-            break;
-        };
+    while let Some(msg) = reader.recv() {
         match msg {
             Message::Request(x) => {
                 error!("Unexpected request before initialized: {x:?}");

@@ -142,42 +142,40 @@ impl<'a> Transaction<'a> {
         let mut res = Vec::new();
         for idx in bindings.keys::<Key>() {
             match bindings.idx_to_key(idx) {
-                key @ Key::ReturnType(id) => {
-                    if inlay_hint_config.function_return_types {
-                        match bindings.get(bindings.key_to_idx(&Key::Definition(*id))) {
-                            Binding::Function(x, _pred, _class_meta) => {
-                                if matches!(&bindings.get(idx), Binding::ReturnType(ret) if !ret.kind.has_return_annotation())
-                                    && let Some(mut ty) = self.get_type_for_display(handle, key)
-                                    && !ty.is_any()
+                key @ Key::ReturnType(id) if inlay_hint_config.function_return_types => {
+                    match bindings.get(bindings.key_to_idx(&Key::Definition(*id))) {
+                        Binding::Function(x, _pred, _class_meta) => {
+                            if matches!(&bindings.get(idx), Binding::ReturnType(ret) if !ret.kind.has_return_annotation())
+                                && let Some(mut ty) = self.get_type_for_display(handle, key)
+                                && !ty.is_any()
+                            {
+                                let fun = bindings.get(bindings.get(*x).undecorated_idx);
+                                if fun.def.is_async
+                                    && let Some(Some((_, _, return_ty))) = self.ad_hoc_solve(
+                                        handle,
+                                        "inlay_hint_coroutine",
+                                        |solver| solver.unwrap_coroutine(&ty),
+                                    )
                                 {
-                                    let fun = bindings.get(bindings.get(*x).undecorated_idx);
-                                    if fun.def.is_async
-                                        && let Some(Some((_, _, return_ty))) = self.ad_hoc_solve(
-                                            handle,
-                                            "inlay_hint_coroutine",
-                                            |solver| solver.unwrap_coroutine(&ty),
-                                        )
-                                    {
-                                        ty = return_ty;
-                                    }
-                                    // Use get_types_with_locations to get type parts with location info
-                                    let type_parts = ty.get_types_with_locations(Some(&stdlib));
-                                    let label_parts = once((" -> ".to_owned(), None))
-                                        .chain(
-                                            type_parts
-                                                .iter()
-                                                .map(|(text, loc)| (text.clone(), loc.clone())),
-                                        )
-                                        .collect();
-                                    res.push(InlayHintData {
-                                        position: fun.def.parameters.range.end(),
-                                        label_parts,
-                                        insertable: true,
-                                    });
+                                    ty = return_ty;
                                 }
+                                // Use get_types_with_locations to get type parts with location info
+                                let type_parts = ty.get_types_with_locations(Some(&stdlib));
+                                let label_parts = once((" -> ".to_owned(), None))
+                                    .chain(
+                                        type_parts
+                                            .iter()
+                                            .map(|(text, loc)| (text.clone(), loc.clone())),
+                                    )
+                                    .collect();
+                                res.push(InlayHintData {
+                                    position: fun.def.parameters.range.end(),
+                                    label_parts,
+                                    insertable: true,
+                                });
                             }
-                            _ => {}
                         }
+                        _ => {}
                     }
                 }
                 key @ Key::Definition(_)

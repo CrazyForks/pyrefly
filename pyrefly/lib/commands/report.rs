@@ -892,7 +892,7 @@ impl ReportArgs {
                 }
             }
         }
-        variables.sort_by(|a, b| a.location.cmp(&b.location));
+        variables.sort_by_key(|a| a.location);
         variables
     }
 
@@ -1045,7 +1045,7 @@ impl ReportArgs {
                 location,
             });
         }
-        attrs.sort_by(|a, b| a.location.cmp(&b.location));
+        attrs.sort_by_key(|a| a.location);
         attrs
     }
 

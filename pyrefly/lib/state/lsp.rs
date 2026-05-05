@@ -2529,76 +2529,74 @@ impl<'a> Transaction<'a> {
                 }
             }
             match error.error_kind() {
-                ErrorKind::UnknownName => {
-                    if error_range.contains_range(range) {
-                        let unknown_name = module_info.code_at(error_range);
-                        for (handle_to_import_from, export) in self
-                            .search_exports_exact(unknown_name, custom_thread_pool)
-                            .unwrap_or_default()
-                        {
-                            self.create_quickfix_action_for_export(
-                                handle,
-                                import_format,
-                                &module_info,
-                                &ast,
-                                &mut import_actions,
-                                unknown_name,
-                                handle_to_import_from,
-                                export,
-                            );
-                        }
-
-                        let aliased_module = self.create_quickfix_action_for_common_alias_import(
+                ErrorKind::UnknownName if error_range.contains_range(range) => {
+                    let unknown_name = module_info.code_at(error_range);
+                    for (handle_to_import_from, export) in self
+                        .search_exports_exact(unknown_name, custom_thread_pool)
+                        .unwrap_or_default()
+                    {
+                        self.create_quickfix_action_for_export(
                             handle,
+                            import_format,
                             &module_info,
                             &ast,
                             &mut import_actions,
                             unknown_name,
+                            handle_to_import_from,
+                            export,
                         );
-                        for module_name in self.search_modules_fuzzy(unknown_name) {
-                            if module_name == handle.module() {
-                                continue;
-                            }
-                            if aliased_module.is_some_and(|m| m == module_name) {
-                                continue;
-                            }
-                            if let Some((_submodule_name, position, insert_text, _)) = self
-                                .submodule_autoimport_edit(handle, &ast, module_name, import_format)
-                            {
-                                let range = TextRange::at(position, TextSize::new(0));
-                                let title = format!("Insert import: `{}`", insert_text.trim());
-                                let is_private_import = module_name
-                                    .components()
-                                    .last()
-                                    .is_some_and(|component| component.as_str().starts_with('_'));
-                                import_actions.push(QuickfixAction {
-                                    title,
-                                    module_info: module_info.dupe(),
-                                    range,
-                                    insert_text,
-                                    is_deprecated: false,
-                                    is_private_import,
-                                });
-                            }
-                            self.create_quickfix_action_for_fuzzy_match(
-                                handle,
-                                &module_info,
-                                &ast,
-                                &mut import_actions,
-                                module_name,
-                            );
-                        }
+                    }
 
-                        if let Some(mut actions) = quick_fixes::generate_code::generate_code_actions(
-                            self,
+                    let aliased_module = self.create_quickfix_action_for_common_alias_import(
+                        handle,
+                        &module_info,
+                        &ast,
+                        &mut import_actions,
+                        unknown_name,
+                    );
+                    for module_name in self.search_modules_fuzzy(unknown_name) {
+                        if module_name == handle.module() {
+                            continue;
+                        }
+                        if aliased_module.is_some_and(|m| m == module_name) {
+                            continue;
+                        }
+                        if let Some((_submodule_name, position, insert_text, _)) =
+                            self.submodule_autoimport_edit(handle, &ast, module_name, import_format)
+                        {
+                            let range = TextRange::at(position, TextSize::new(0));
+                            let title = format!("Insert import: `{}`", insert_text.trim());
+                            let is_private_import = module_name
+                                .components()
+                                .last()
+                                .is_some_and(|component| component.as_str().starts_with('_'));
+                            import_actions.push(QuickfixAction {
+                                title,
+                                module_info: module_info.dupe(),
+                                range,
+                                insert_text,
+                                is_deprecated: false,
+                                is_private_import,
+                            });
+                        }
+                        self.create_quickfix_action_for_fuzzy_match(
                             handle,
                             &module_info,
-                            ast.as_ref(),
-                            error_range,
-                            unknown_name,
-                        ) {
-                            generate_actions.append(&mut actions);
-                        }
+                            &ast,
+                            &mut import_actions,
+                            module_name,
+                        );
+                    }
+
+                    if let Some(mut actions) = quick_fixes::generate_code::generate_code_actions(
+                        self,
+                        handle,
+                        &module_info,
+                        ast.as_ref(),
+                        error_range,
+                        unknown_name,
+                    ) {
+                        generate_actions.append(&mut actions);
                     }
                 }
                 ErrorKind::RedundantCast => {
