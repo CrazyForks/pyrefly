@@ -75,6 +75,7 @@ pub mod library {
                 pub use crate::commands::config_finder::ConfigConfigurerWrapper;
                 pub use crate::commands::config_finder::default_config_finder;
                 pub use crate::commands::config_finder::default_config_finder_with_overrides;
+                pub use crate::commands::files::UpsellDecision;
                 pub use crate::commands::util;
                 pub use crate::error::legacy::LegacyError;
                 pub use crate::lsp::non_wasm::external_provider::ExternalProvider;

@@ -93,7 +93,7 @@ impl SubConfig {
 /// on disk. Set by `resolve_unconfigured_config` and read by the LSP status
 /// bar and the CLI upsell to explain to the user how Pyrefly chose its
 /// behavior in the absence of a `pyrefly.toml` / `[tool.pyrefly]` section.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SynthesizedPresetReason {
     /// Nothing migrate-able was found near the source file. Pyrefly fell
     /// back to the basic preset.

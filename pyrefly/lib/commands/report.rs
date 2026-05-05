@@ -414,7 +414,8 @@ impl ReportArgs {
             anyhow::bail!("--module and --public-only cannot be combined");
         }
 
-        let (files_to_check, config_finder) = self.files.resolve(self.config_override, wrapper)?;
+        let (files_to_check, config_finder, _) =
+            self.files.resolve(self.config_override, wrapper)?;
         Self::run_inner(
             files_to_check,
             config_finder,

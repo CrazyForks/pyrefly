@@ -29,10 +29,31 @@ use crate::commands::config_finder::default_config_finder_with_overrides;
 use crate::config::config::ConfigFile;
 use crate::config::config::ConfigSource;
 use crate::config::config::ProjectLayout;
+use crate::config::config::SynthesizedPresetReason;
 use crate::config::error_kind::Severity;
 use crate::config::finder::ConfigError;
 use crate::config::finder::ConfigFinder;
 use crate::config::finder::debug_log;
+
+/// Whether (and how) to emit the "no `pyrefly.toml` found" upsell after
+/// a CLI check. Computed once during file resolution so the hot path
+/// can short-circuit instead of iterating every checked module.
+#[derive(Debug, Clone, Copy)]
+pub enum UpsellDecision {
+    /// Never upsell. Used when an explicit `--config` was provided, or
+    /// when a real on-disk config covers the project.
+    Skip,
+    /// Upsell with this reason. Used in project mode (`pyrefly check`
+    /// no file args) where every checked file shares the cwd config —
+    /// a single field access suffices, no per-handle walk required.
+    Show(SynthesizedPresetReason),
+    /// File-args mode without `--config`: files may resolve to distinct
+    /// configs via per-file upward search. Caller decides at run time
+    /// by walking handles with a short-circuiting same-config check.
+    /// Iteration here is bounded by the user's explicit args (not a
+    /// project-wide expansion), so the cost stays user-proportional.
+    Determine,
+}
 
 /// Arguments regarding which files to pick.
 #[deny(clippy::missing_docs_in_private_items)]
@@ -122,12 +143,18 @@ pub fn get_project_config_for_current_dir(
 }
 
 /// Get inputs for a full-project check. We will look for a config file and type-check the project it defines.
+///
+/// Also returns the `UpsellDecision`: in project mode every checked
+/// file shares the single returned config, so the upsell decision is
+/// known up front — `Show(reason)` if the config carries a synthesized
+/// preset reason, `Skip` otherwise. The caller never needs to walk
+/// handles to decide.
 fn get_globs_and_config_for_project(
     config: Option<PathBuf>,
     project_excludes: Option<Globs>,
     args: ConfigOverrideArgs,
     wrapper: Option<ConfigConfigurerWrapper>,
-) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder)> {
+) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)> {
     let (config, mut errors) = match config {
         Some(explicit) => get_explicit_config(&explicit, args),
         None => get_project_config_for_current_dir(args, wrapper)?,
@@ -184,18 +211,28 @@ fn get_globs_and_config_for_project(
 
     add_config_errors(&config_finder, errors)?;
 
-    Ok((Box::new(filtered_globs), config_finder))
+    let upsell = match config.synthesized_preset_reason {
+        Some(reason) => UpsellDecision::Show(reason),
+        None => UpsellDecision::Skip,
+    };
+    Ok((Box::new(filtered_globs), config_finder, upsell))
 }
 
 /// Get inputs for a per-file check. If an explicit config is passed in, we use it; otherwise, we
 /// find configs via upward search from each file.
+///
+/// Also returns the `UpsellDecision`: explicit `--config` always means
+/// `Skip` (the loaded config is real and never carries a synthesized
+/// reason). Per-file mode defers to `Determine` because each file may
+/// hit a different config; the run-time iteration over user-arg
+/// handles short-circuits on the first mismatch.
 fn get_globs_and_config_for_files(
     config: Option<PathBuf>,
     files_to_check: Globs,
     project_excludes: Option<Globs>,
     args: ConfigOverrideArgs,
     wrapper: Option<ConfigConfigurerWrapper>,
-) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder)> {
+) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)> {
     let files_to_check = absolutize(files_to_check);
     let args_disable_excludes_heuristics = args.disable_project_excludes_heuristics();
     let get_project_excludes_and_heuristics = move |config: Option<&ConfigFile>| {
@@ -208,13 +245,19 @@ fn get_globs_and_config_for_files(
         }
         (project_excludes, !disable)
     };
-    let (config_finder, errors, project_excludes, use_heuristics) = match config {
+    let (config_finder, errors, project_excludes, use_heuristics, upsell) = match config {
         Some(explicit) => {
             let (config, errors) = get_explicit_config(&explicit, args);
             let (project_excludes, use_heuristics) =
                 get_project_excludes_and_heuristics(Some(&config));
             let config_finder = ConfigFinder::new_constant(config);
-            (config_finder, errors, project_excludes, use_heuristics)
+            (
+                config_finder,
+                errors,
+                project_excludes,
+                use_heuristics,
+                UpsellDecision::Skip,
+            )
         }
         None => {
             let config_finder = default_config_finder_with_overrides(args, false, wrapper);
@@ -227,14 +270,21 @@ fn get_globs_and_config_for_files(
                 None
             };
             let (project_excludes, use_heuristics) = get_project_excludes_and_heuristics(None);
-            if let Some(root) = solo_root {
+            let (config_finder, errors) = if let Some(root) = solo_root {
                 // We don't care about the contents of the config, only if we generated any errors while parsing it.
                 config_finder.directory(&root);
                 let errors = config_finder.errors();
-                (config_finder, errors, project_excludes, use_heuristics)
+                (config_finder, errors)
             } else {
-                (config_finder, Vec::new(), project_excludes, use_heuristics)
-            }
+                (config_finder, Vec::new())
+            };
+            (
+                config_finder,
+                errors,
+                project_excludes,
+                use_heuristics,
+                UpsellDecision::Determine,
+            )
         }
     };
     add_config_errors(&config_finder, errors)?;
@@ -249,7 +299,7 @@ fn get_globs_and_config_for_files(
         HiddenDirFilter::Disabled
     };
     let globs = FilteredGlobs::new(files_to_check, project_excludes, None, hidden_dir_filter);
-    Ok((Box::new(globs), config_finder))
+    Ok((Box::new(globs), config_finder, upsell))
 }
 
 impl FilesArgs {
@@ -257,7 +307,7 @@ impl FilesArgs {
         self,
         config_override: ConfigOverrideArgs,
         wrapper: Option<ConfigConfigurerWrapper>,
-    ) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder)> {
+    ) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)> {
         let project_excludes = if let Some(project_excludes) = self.project_excludes {
             Some(absolutize(Globs::new(project_excludes)?))
         } else {
@@ -286,7 +336,7 @@ impl FilesArgs {
         config: Option<PathBuf>,
         args: ConfigOverrideArgs,
         wrapper: Option<ConfigConfigurerWrapper>,
-    ) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder)> {
+    ) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)> {
         FilesArgs {
             files,
             config,
