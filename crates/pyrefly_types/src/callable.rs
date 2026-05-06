@@ -506,17 +506,21 @@ pub struct FuncMetadata {
 }
 
 impl FuncMetadata {
-    pub fn method(cls: &Class, name: Name) -> Self {
+    pub fn def(module: &Module, cls: Option<&Class>, name: Name) -> Self {
         Self {
             kind: FunctionKind::Def(Arc::new(FuncId {
-                module: cls.module().dupe(),
-                cls: Some(cls.dupe()),
+                module: module.dupe(),
+                cls: cls.map(Dupe::dupe),
                 name,
                 def_index: None,
                 outer_funcs: None,
             })),
             flags: FuncFlags::default(),
         }
+    }
+
+    pub fn method(cls: &Class, name: Name) -> Self {
+        Self::def(cls.module(), Some(cls), name)
     }
 }
 
