@@ -678,3 +678,20 @@ def foo(x: A[int]) -> A[int | str]:
     return x  # E: Returned type `A[int]` is not assignable to declared return type `A[int | str]`
 "#,
 );
+
+testcase!(
+    bug = "The reported error is correct but is on the wrong line",
+    test_variance_error_in_overload,
+    r#"
+from typing import Any, Generic, overload, TypeVar
+
+T_co = TypeVar("T_co", covariant=True)
+
+class C(Generic[T_co]):
+    @overload
+    def f(self, x: int) -> int: ...  # E: `T_co` is Covariant but is used in contravariant position
+    @overload
+    def f(self, x: T_co) -> str: ...
+    def f(self, x: Any) -> Any: ...
+    "#,
+);

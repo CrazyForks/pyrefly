@@ -356,64 +356,32 @@ fn check_typevar(
 
 /// Check method for variance violations (shallow - only direct TypeVars in params/return).
 fn check_method_shallow(typ: &Type, range: TextRange, violations: &mut Vec<VarianceViolation>) {
-    match typ {
-        Type::Forall(forall) => {
-            check_method_shallow(&forall.body.clone().as_type(), range, violations);
+    typ.visit_toplevel_callable(|callable| {
+        // Check return type (covariant position)
+        if let Type::Quantified(q) = &callable.ret {
+            check_typevar(
+                q.name(),
+                Variance::Covariant,
+                q.variance(),
+                range,
+                violations,
+            );
         }
-        Type::Function(t) => {
-            // Check return type (covariant position)
-            if let Type::Quantified(q) = &t.signature.ret {
-                check_typevar(
-                    q.name(),
-                    Variance::Covariant,
-                    q.variance(),
-                    range,
-                    violations,
-                );
-            }
-            // Check parameters (contravariant position)
-            if let Params::List(param_list) = &t.signature.params {
-                for param in param_list.items().iter() {
-                    if let Type::Quantified(q) = param.as_type() {
-                        check_typevar(
-                            q.name(),
-                            Variance::Contravariant,
-                            q.variance(),
-                            range,
-                            violations,
-                        );
-                    }
+        // Check parameters (contravariant position)
+        if let Params::List(param_list) = &callable.params {
+            for param in param_list.items().iter() {
+                if let Type::Quantified(q) = param.as_type() {
+                    check_typevar(
+                        q.name(),
+                        Variance::Contravariant,
+                        q.variance(),
+                        range,
+                        violations,
+                    );
                 }
             }
         }
-        Type::Callable(t) => {
-            // Check return type (covariant position)
-            if let Type::Quantified(q) = &t.ret {
-                check_typevar(
-                    q.name(),
-                    Variance::Covariant,
-                    q.variance(),
-                    range,
-                    violations,
-                );
-            }
-            // Check parameters (contravariant position)
-            if let Params::List(param_list) = &t.params {
-                for param in param_list.items().iter() {
-                    if let Type::Quantified(q) = param.as_type() {
-                        check_typevar(
-                            q.name(),
-                            Variance::Contravariant,
-                            q.variance(),
-                            range,
-                            violations,
-                        );
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
+    });
 }
 
 fn initial_inference_status(gp: &Quantified) -> InferenceStatus {
