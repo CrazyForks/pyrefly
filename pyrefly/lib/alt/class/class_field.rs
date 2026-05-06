@@ -2193,7 +2193,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let setter = self.property_constructor_arg(class, name, call, 1, "fset", &errors);
         let has_deleter = self
             .property_constructor_arg(class, name, call, 2, "fdel", &errors)
-            .is_some_and(|ty| !matches!(ty, Type::None));
+            .is_some();
 
         let getter_without_property = getter.without_property_metadata();
         let setter_without_property = setter.as_ref().map(|s| s.without_property_metadata());
@@ -2240,10 +2240,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .then_some(&kw.value)
             })
         })?;
-        Some(match self.expr_infer(arg, errors) {
+        match self.expr_infer(arg, errors) {
+            Type::None => None,
             Type::Callable(callable) => {
                 // Coerce the callable to a function so we can later attach property metadata.
-                Type::Function(Box::new(Function {
+                Some(Type::Function(Box::new(Function {
                     signature: *callable,
                     metadata: FuncMetadata::def(
                         self.module().dupe(),
@@ -2251,10 +2252,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         name.clone(),
                         None,
                     ),
-                }))
+                })))
             }
-            ty => ty,
-        })
+            ty => Some(ty),
+        }
     }
 
     fn determine_read_only_reason(

@@ -747,3 +747,17 @@ def f(c: C):
     assert_type(c.p, Any)
     "#,
 );
+
+testcase!(
+    test_property_constructor_with_none_setter,
+    r#"
+from typing import assert_type
+class C:
+    def _get_foo(self) -> int:
+        return 42
+    foo = property(_get_foo, None)
+def f(c: C):
+    assert_type(c.foo, int)
+    c.foo = 42  # E: Attribute `foo` of class `C` is a read-only property and cannot be set
+    "#,
+);
