@@ -405,7 +405,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     fn property(&self, cls: &Class, name: Name, ty: Type) -> Type {
         let signature = Callable::list(ParamList::new(vec![self.class_self_param(cls, false)]), ty);
-        let mut metadata = FuncMetadata::def(cls, name);
+        let mut metadata = FuncMetadata::method(cls, name);
         metadata.flags.property_metadata = Some(PropertyMetadata {
             role: PropertyRole::Getter,
             getter: self.heap.mk_any_error(),
@@ -502,7 +502,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let ret = self.heap.mk_class_type(self.stdlib.str().clone());
         ClassSynthesizedField::new(self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), ret),
-            metadata: FuncMetadata::def(cls, method_name.clone()),
+            metadata: FuncMetadata::method(cls, method_name.clone()),
         }))
     }
 

@@ -506,7 +506,7 @@ pub struct FuncMetadata {
 }
 
 impl FuncMetadata {
-    pub fn def(cls: &Class, name: Name) -> Self {
+    pub fn method(cls: &Class, name: Name) -> Self {
         Self {
             kind: FunctionKind::Def(Arc::new(FuncId {
                 module: cls.module().dupe(),

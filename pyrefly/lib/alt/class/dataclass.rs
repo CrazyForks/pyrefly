@@ -427,7 +427,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self.instantiate(cls)),
-            metadata: FuncMetadata::def(cls, dunder::REPLACE),
+            metadata: FuncMetadata::method(cls, dunder::REPLACE),
         });
         ClassSynthesizedField::new(ty)
     }
@@ -927,7 +927,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self.heap.mk_none()),
-            metadata: FuncMetadata::def(cls, dunder::INIT),
+            metadata: FuncMetadata::method(cls, dunder::INIT),
         });
         ClassSynthesizedField::new(ty)
     }
@@ -999,7 +999,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         } else {
                             callable.clone()
                         },
-                        metadata: FuncMetadata::def(cls, name.clone()),
+                        metadata: FuncMetadata::method(cls, name.clone()),
                     })),
                 )
             })
@@ -1011,7 +1011,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let ret = self.heap.mk_class_type(self.stdlib.int().clone());
         ClassSynthesizedField::new(self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), ret),
-            metadata: FuncMetadata::def(cls, dunder::HASH),
+            metadata: FuncMetadata::method(cls, dunder::HASH),
         }))
     }
 }

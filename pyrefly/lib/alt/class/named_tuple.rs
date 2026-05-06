@@ -127,7 +127,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 ParamList::new(params),
                 self.heap.mk_self_type(self.as_class_type_unchecked(cls)),
             ),
-            metadata: FuncMetadata::def(cls, dunder::NEW),
+            metadata: FuncMetadata::method(cls, dunder::NEW),
         });
         ClassSynthesizedField::new(ty)
     }
@@ -141,7 +141,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         ];
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self.heap.mk_none()),
-            metadata: FuncMetadata::def(cls, dunder::INIT),
+            metadata: FuncMetadata::method(cls, dunder::INIT),
         });
         ClassSynthesizedField::new(ty)
     }
@@ -167,7 +167,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.heap
                     .mk_class_type(self.stdlib.iterable(self.unions(element_types))),
             ),
-            metadata: FuncMetadata::def(cls, dunder::ITER),
+            metadata: FuncMetadata::method(cls, dunder::ITER),
         });
         ClassSynthesizedField::new(ty)
     }
