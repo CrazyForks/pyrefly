@@ -3209,7 +3209,7 @@ impl Server {
                         .docstring_ranges(&transaction, &text_document)
                         .unwrap_or_default();
                     self.send_response(new_response(x.id, Ok(ranges)));
-                } else if &x.method == TypeErrorDisplayStatusRequest::METHOD {
+                } else if x.method == TypeErrorDisplayStatusRequest::METHOD {
                     let text_document: TextDocumentIdentifier = serde_json::from_value(x.params)?;
                     let response = if let Some(path) =
                         self.path_for_uri_or_notebook_cell(&text_document.uri)
