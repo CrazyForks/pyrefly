@@ -3124,11 +3124,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         ) {
             Ok(()) => true,
             Err(error) => {
-                let note = self
-                    .suggest_enum_member_for_value(got, want)
+                let enum_member_suggestion = self.suggest_enum_member_for_value(got, want);
+                let note = enum_member_suggestion
+                    .as_ref()
                     .map(|s| format!("Did you mean `{s}`?"));
+                let quick_fixes = enum_member_suggestion
+                    .map(|replacement| ErrorQuickFix::ReplaceWithEnumMember { replacement })
+                    .into_iter()
+                    .collect();
                 self.solver()
-                    .error(got, want, errors, loc, tcc, error, note, Vec::new());
+                    .error(got, want, errors, loc, tcc, error, note, quick_fixes);
                 false
             }
         }
