@@ -1482,12 +1482,7 @@ pub mod tests {
             obj: Type::ClassDef(class.dupe()),
             func: BoundMethodType::Function(Function {
                 signature: method,
-                metadata: FuncMetadata::def(
-                    class.dupe().module().dupe(),
-                    class.dupe(),
-                    Name::new(method_name),
-                    None,
-                ),
+                metadata: FuncMetadata::def(&class, Name::new(method_name)),
             }),
         }))
     }
@@ -1525,12 +1520,7 @@ pub mod tests {
                 tparams,
                 body: Function {
                     signature: method,
-                    metadata: FuncMetadata::def(
-                        class.dupe().module().dupe(),
-                        class.dupe(),
-                        Name::new(method_name),
-                        None,
-                    ),
+                    metadata: FuncMetadata::def(&class, Name::new(method_name)),
                 },
             }),
         }))
@@ -2118,12 +2108,7 @@ pub mod tests {
                 )]),
                 Type::None,
             ),
-            metadata: FuncMetadata::def(
-                class.dupe().module().dupe(),
-                class.dupe(),
-                Name::new_static("overloaded_func"),
-                None,
-            ),
+            metadata: FuncMetadata::def(&class, Name::new_static("overloaded_func")),
         };
 
         let sig2 = Function {
@@ -2142,12 +2127,7 @@ pub mod tests {
                 ]),
                 Type::None,
             ),
-            metadata: FuncMetadata::def(
-                class.dupe().module().dupe(),
-                class.dupe(),
-                Name::new_static("overloaded_func"),
-                None,
-            ),
+            metadata: FuncMetadata::def(&class, Name::new_static("overloaded_func")),
         };
 
         let overload = Type::Overload(Overload {

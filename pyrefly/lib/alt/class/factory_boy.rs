@@ -5,7 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use dupe::Dupe;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::callable::FuncMetadata;
 use pyrefly_types::callable::Function;
@@ -103,7 +102,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         params.push(Param::Kwargs(None, self.heap.mk_any_implicit()));
         ClassSynthesizedField::new_classvar(self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), ret_type),
-            metadata: FuncMetadata::def(self.module().dupe(), cls.dupe(), name.clone(), None),
+            metadata: FuncMetadata::def(cls, name.clone()),
         }))
     }
 }

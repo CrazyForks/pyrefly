@@ -7,7 +7,6 @@
 
 use std::sync::Arc;
 
-use dupe::Dupe;
 use pyrefly_python::dunder;
 use pyrefly_util::prelude::SliceExt;
 use ruff_python_ast::Arguments;
@@ -428,7 +427,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self.instantiate(cls)),
-            metadata: FuncMetadata::def(self.module().dupe(), cls.dupe(), dunder::REPLACE, None),
+            metadata: FuncMetadata::def(cls, dunder::REPLACE),
         });
         ClassSynthesizedField::new(ty)
     }
@@ -928,7 +927,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self.heap.mk_none()),
-            metadata: FuncMetadata::def(self.module().dupe(), cls.dupe(), dunder::INIT, None),
+            metadata: FuncMetadata::def(cls, dunder::INIT),
         });
         ClassSynthesizedField::new(ty)
     }
@@ -1000,12 +999,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         } else {
                             callable.clone()
                         },
-                        metadata: FuncMetadata::def(
-                            self.module().dupe(),
-                            cls.dupe(),
-                            name.clone(),
-                            None,
-                        ),
+                        metadata: FuncMetadata::def(cls, name.clone()),
                     })),
                 )
             })
@@ -1017,7 +1011,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let ret = self.heap.mk_class_type(self.stdlib.int().clone());
         ClassSynthesizedField::new(self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), ret),
-            metadata: FuncMetadata::def(self.module().dupe(), cls.dupe(), dunder::HASH, None),
+            metadata: FuncMetadata::def(cls, dunder::HASH),
         }))
     }
 }

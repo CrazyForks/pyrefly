@@ -2238,12 +2238,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // Coerce the callable to a function so we can later attach property metadata.
                 Some(Type::Function(Box::new(Function {
                     signature: *callable,
-                    metadata: FuncMetadata::def(
-                        self.module().dupe(),
-                        class.dupe(),
-                        name.clone(),
-                        None,
-                    ),
+                    metadata: FuncMetadata::def(class, name.clone()),
                 })))
             }
             ty => Some(ty),
