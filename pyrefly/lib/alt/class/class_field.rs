@@ -18,7 +18,6 @@ use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::callable::FuncFlags;
-use pyrefly_types::callable::FuncId;
 use pyrefly_types::callable::FunctionKind;
 use pyrefly_types::callable::ParamList;
 use pyrefly_types::callable::Params;
@@ -2819,20 +2818,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // Both of these are heuristics that aren't guaranteed to be correct, but the dunder heuristic has usability benefits
                 // and the ClassVar heuristic aligns us with existing type checkers.
                 if let Type::Callable(box callable) = ty {
-                    let module = self.module();
-                    let func_id = FuncId {
-                        module: module.clone(),
-                        cls: None,
-                        name: field_name.clone(),
-                        def_index: None,
-                        outer_funcs: None,
-                    };
                     ty = self.heap.mk_function(Function {
                         signature: callable,
-                        metadata: FuncMetadata {
-                            kind: FunctionKind::Def(Arc::new(func_id)),
-                            flags: FuncFlags::default(),
-                        },
+                        metadata: FuncMetadata::def(self.module(), None, field_name.clone()),
                     })
                 }
                 if let Some(quantified) = self_quantified {

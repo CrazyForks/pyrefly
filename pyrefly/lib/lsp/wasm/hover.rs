@@ -689,11 +689,8 @@ mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
     use pyrefly_types::callable::Callable;
-    use pyrefly_types::callable::FuncFlags;
-    use pyrefly_types::callable::FuncId;
     use pyrefly_types::callable::FuncMetadata;
     use pyrefly_types::callable::Function;
-    use pyrefly_types::callable::FunctionKind;
     use pyrefly_types::heap::TypeHeap;
     use ruff_python_ast::name::Name;
 
@@ -705,16 +702,7 @@ mod tests {
             ModulePath::filesystem(PathBuf::from(format!("{module_name}.pyi"))),
             Arc::new(String::new()),
         );
-        let metadata = FuncMetadata {
-            kind: FunctionKind::Def(Arc::new(FuncId {
-                module,
-                cls: None,
-                name: Name::new(func_name),
-                def_index: None,
-                outer_funcs: None,
-            })),
-            flags: FuncFlags::default(),
-        };
+        let metadata = FuncMetadata::def(&module, None, Name::new(func_name));
         heap.mk_function(Function {
             signature: Callable::ellipsis(heap.mk_none()),
             metadata,
