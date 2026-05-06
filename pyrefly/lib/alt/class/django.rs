@@ -71,6 +71,7 @@ const ID: Name = Name::new_static("id");
 const PK: Name = Name::new_static("pk");
 const AUTO_FIELD: Name = Name::new_static("AutoField");
 const FOREIGN_KEY: Name = Name::new_static("ForeignKey");
+const ONE_TO_ONE_FIELD: Name = Name::new_static("OneToOneField");
 const NULL: Name = Name::new_static("null");
 const BLANK: Name = Name::new_static("blank");
 const CHAR_FIELD: Name = Name::new_static("CharField");
@@ -290,10 +291,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     pub fn is_foreign_key_field(&self, field: &Class) -> bool {
-        field.has_toplevel_qname(
-            ModuleName::django_models_fields_related().as_str(),
-            FOREIGN_KEY.as_str(),
-        )
+        let module = ModuleName::django_models_fields_related();
+        field.has_toplevel_qname(module.as_str(), FOREIGN_KEY.as_str())
+            || field.has_toplevel_qname(module.as_str(), ONE_TO_ONE_FIELD.as_str())
     }
 
     pub fn is_many_to_many_field(&self, field: &Class) -> bool {

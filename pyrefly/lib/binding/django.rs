@@ -16,6 +16,7 @@ use crate::binding::bindings::BindingsBuilder;
 
 const PRIMARY_KEY: Name = Name::new_static("primary_key");
 const FOREIGN_KEY: Name = Name::new_static("ForeignKey");
+const ONE_TO_ONE_FIELD: Name = Name::new_static("OneToOneField");
 const CHOICES: Name = Name::new_static("choices");
 
 /// Django-specific field information detected during binding phase.
@@ -51,11 +52,12 @@ impl<'a> BindingsBuilder<'a> {
         let Some(call) = e.as_call_expr() else {
             return false;
         };
-        match &*call.func {
-            Expr::Name(name) => name.id.as_str() == FOREIGN_KEY.as_str(),
-            Expr::Attribute(attr) => attr.attr.as_str() == FOREIGN_KEY.as_str(),
-            _ => false,
-        }
+        let name_str = match &*call.func {
+            Expr::Name(name) => name.id.as_str(),
+            Expr::Attribute(attr) => attr.attr.as_str(),
+            _ => return false,
+        };
+        name_str == FOREIGN_KEY.as_str() || name_str == ONE_TO_ONE_FIELD.as_str()
     }
 
     pub fn extract_django_choices(&self, e: &Expr) -> bool {

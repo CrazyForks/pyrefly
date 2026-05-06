@@ -161,7 +161,6 @@ assert_type(b.reporter_id, UUID)
 );
 
 django_testcase!(
-    bug = "OneToOneField should be treated like ForeignKey for _id and type resolution",
     test_one_to_one_field_id,
     r#"
 from typing import assert_type
@@ -175,14 +174,13 @@ class Article(models.Model):
     reporter = models.OneToOneField(Reporter, on_delete=models.CASCADE)
 
 article = Article()
-assert_type(article.reporter, Reporter)  # E: assert_type(Any, Reporter) failed
-assert_type(article.reporter.full_name, str)  # E: assert_type(Unknown, str) failed
-assert_type(article.reporter_id, int)  # E: assert_type(Unknown, int) failed  # E: `Article` has no attribute `reporter_id`
+assert_type(article.reporter, Reporter)
+assert_type(article.reporter.full_name, str)
+assert_type(article.reporter_id, int)
 "#,
 );
 
 django_testcase!(
-    bug = "OneToOneField should be treated like ForeignKey for _id and type resolution",
     test_one_to_one_field_nullable_id,
     r#"
 from typing import assert_type
@@ -195,13 +193,12 @@ class Article(models.Model):
     reporter = models.OneToOneField(Reporter, null=True, on_delete=models.CASCADE)
 
 article = Article()
-assert_type(article.reporter, Reporter | None)  # E: assert_type(Any | None, Reporter | None) failed
-assert_type(article.reporter_id, int | None)  # E: assert_type(Unknown, int | None) failed  # E: `Article` has no attribute `reporter_id`
+assert_type(article.reporter, Reporter | None)
+assert_type(article.reporter_id, int | None)
 "#,
 );
 
 django_testcase!(
-    bug = "OneToOneField should be treated like ForeignKey for _id and type resolution",
     test_one_to_one_field_custom_pk,
     r#"
 from typing import assert_type
@@ -216,8 +213,8 @@ class Article(models.Model):
     reporter = models.OneToOneField(Reporter, on_delete=models.CASCADE)
 
 article = Article()
-assert_type(article.reporter, Reporter)  # E: assert_type(Any, Reporter) failed
-assert_type(article.reporter_id, UUID)  # E: assert_type(Unknown, UUID) failed  # E: `Article` has no attribute `reporter_id`
+assert_type(article.reporter, Reporter)
+assert_type(article.reporter_id, UUID)
 "#,
 );
 
