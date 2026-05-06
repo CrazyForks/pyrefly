@@ -582,6 +582,23 @@ pub struct PropertyMetadata {
     pub has_deleter: bool,
 }
 
+impl PropertyMetadata {
+    /// Build a PropertyMetadata that stores sanitized (metadata-free) copies of getter/setter.
+    pub fn from_components(
+        role: PropertyRole,
+        getter: &Type,
+        setter: Option<&Type>,
+        has_deleter: bool,
+    ) -> Self {
+        Self {
+            role,
+            getter: getter.without_property_metadata(),
+            setter: setter.map(|s| s.without_property_metadata()),
+            has_deleter,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[derive(Visit, VisitMut, TypeEq)]
 pub struct FuncFlags {

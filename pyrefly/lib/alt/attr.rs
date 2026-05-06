@@ -47,7 +47,6 @@ use crate::error::context::TypeCheckKind;
 use crate::error::style::ErrorStyle;
 use crate::solver::solver::SubsetError;
 use crate::state::loader::FindingOrError;
-use crate::types::callable::FuncMetadata;
 use crate::types::callable::Function;
 use crate::types::callable::FunctionKind;
 use crate::types::callable::PropertyMetadata;
@@ -1796,32 +1795,21 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // TODO(stroxler): it is probably possible to synthesize a forall type here
                     // that uses a type var to propagate the setter. Investigate this option later.
                     let mut getter = property.getter.clone();
-                    let metadata_getter = property.getter.without_property_metadata();
-                    let metadata_setter = property
-                        .setter
-                        .as_ref()
-                        .map(|setter| setter.without_property_metadata());
-                    getter.transform_toplevel_func_metadata(|meta: &mut FuncMetadata| {
-                        meta.flags.property_metadata = Some(PropertyMetadata {
-                            role: PropertyRole::SetterDecorator,
-                            getter: metadata_getter.clone(),
-                            setter: metadata_setter.clone(),
-                            has_deleter: property.deleter,
-                        });
-                    });
-                    acc.found_type(
-                        // TODO(samzhou19815): Support go-to-definition for @property applied symbols
-                        getter, base,
-                    )
+                    getter.set_property_metadata(PropertyMetadata::from_components(
+                        PropertyRole::SetterDecorator,
+                        &property.getter,
+                        property.setter.as_ref(),
+                        property.deleter,
+                    ));
+                    // TODO(samzhou19815): Support go-to-definition for @property applied symbols
+                    acc.found_type(getter, base)
                 } else if attr_name == "deleter" {
                     let mut getter = property.getter.clone();
-                    getter.transform_toplevel_func_metadata(|meta: &mut FuncMetadata| {
-                        meta.flags.property_metadata = Some(PropertyMetadata {
-                            role: PropertyRole::DeleterDecorator,
-                            getter: property.getter.clone(),
-                            setter: property.setter.clone(),
-                            has_deleter: true,
-                        });
+                    getter.set_property_metadata(PropertyMetadata {
+                        role: PropertyRole::DeleterDecorator,
+                        getter: property.getter.clone(),
+                        setter: property.setter.clone(),
+                        has_deleter: true,
                     });
                     acc.found_type(getter, base)
                 } else {

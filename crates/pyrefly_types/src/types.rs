@@ -1604,6 +1604,15 @@ impl Type {
         clone
     }
 
+    /// Returns `true` if the metadata was successfully set (i.e., the type is function-like).
+    pub fn set_property_metadata(&mut self, metadata: PropertyMetadata) -> bool {
+        let mut metadata = Some(metadata);
+        self.transform_toplevel_func_metadata(|meta| {
+            meta.flags.property_metadata = metadata.take();
+        });
+        metadata.is_none()
+    }
+
     pub fn is_overload(&self) -> bool {
         self.visit_toplevel_func_metadata(&|meta| meta.flags.is_overload)
     }

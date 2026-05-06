@@ -2195,25 +2195,17 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .property_constructor_arg(class, name, call, 2, "fdel", &errors)
             .is_some();
 
-        let getter_without_property = getter.without_property_metadata();
-        let setter_without_property = setter.as_ref().map(|s| s.without_property_metadata());
-        let (role, mut primary) = match setter {
-            Some(setter) => (PropertyRole::Setter, setter),
-            None => (PropertyRole::Getter, getter),
+        let role = if setter.is_some() {
+            PropertyRole::Setter
+        } else {
+            PropertyRole::Getter
         };
-        let mut property_metadata = Some(PropertyMetadata {
-            role,
-            getter: getter_without_property,
-            setter: setter_without_property,
-            has_deleter,
-        });
-        primary.transform_toplevel_func_metadata(|meta| {
-            meta.flags.property_metadata = property_metadata.take();
-        });
-        // If `primary` isn't a function-like type, the closure above is a no-op
-        // and property_metadata is never consumed. Fall back to the default path
-        // rather than returning a type without property metadata attached.
-        if property_metadata.is_some() {
+        let metadata =
+            PropertyMetadata::from_components(role, &getter, setter.as_ref(), has_deleter);
+        let mut primary = setter.unwrap_or(getter);
+        if !primary.set_property_metadata(metadata) {
+            // `primary` isn't a function-like type; fall back to the default path
+            // rather than returning a type without property metadata attached.
             return None;
         }
         Some(primary)
