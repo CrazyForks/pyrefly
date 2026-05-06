@@ -3337,7 +3337,7 @@ impl<'a> Transaction<'a> {
     /// For a module containing calls like `foo(bar=1)` and `baz(bar=2)`, searching for
     /// the name `bar` would return both keyword argument identifiers along with their
     /// respective callee information (`foo` and `baz`).
-    pub(self) fn collect_local_keyword_arguments_by_name(
+    fn collect_local_keyword_arguments_by_name(
         &self,
         handle: &Handle,
         expected_name: &Name,
