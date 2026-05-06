@@ -1867,9 +1867,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 _ => {}
             };
         }
-        // Check if this is a Django ForeignKey field
+        // Check if this is a Django ForeignKey or OneToOneField
         let is_foreign_key = metadata.is_django_model()
-            && matches!(&ty, Type::ClassType(cls) if self.is_foreign_key_field(cls.class_object()));
+            && matches!(&ty, Type::ClassType(cls) if self.is_foreign_key_like_field(cls.class_object()));
 
         // Check if this is a Django field with choices
         let has_choices = if let ClassFieldDefinition::AssignedInBody { value, .. } =

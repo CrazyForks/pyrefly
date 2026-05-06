@@ -156,7 +156,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             && let Some(to_expr) = call_expr.arguments.args.first()
             && let Some(model_type) = self.resolve_target(to_expr, class)
         {
-            if self.is_foreign_key_field(field) {
+            if self.is_foreign_key_like_field(field) {
                 Some(model_type)
             } else if self.is_many_to_many_field(field) {
                 return self.get_manager_type(model_type);
@@ -290,7 +290,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    pub fn is_foreign_key_field(&self, field: &Class) -> bool {
+    pub fn is_foreign_key_like_field(&self, field: &Class) -> bool {
         let module = ModuleName::django_models_fields_related();
         field.has_toplevel_qname(module.as_str(), FOREIGN_KEY.as_str())
             || field.has_toplevel_qname(module.as_str(), ONE_TO_ONE_FIELD.as_str())
@@ -560,10 +560,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             fields.insert(PK, ClassSynthesizedField::new(pk_type));
         }
 
-        // Synthesize `<field_name>_id` fields for ForeignKey fields.
+        // Synthesize `<field_name>_id` fields for ForeignKey and OneToOneField fields.
         // We use field names cached in metadata (detected during binding phase)
         // to avoid triggering type resolution during synthesis, which can cause cycles.
-        for field_name in &django_metadata.foreign_key_fields {
+        for field_name in &django_metadata.foreign_key_like_fields {
             if let Some(class_field) = self.get_field_from_current_class_only(cls, field_name)
                 && let Some(fk_id_type) = self.get_foreign_key_id_type(&class_field)
             {

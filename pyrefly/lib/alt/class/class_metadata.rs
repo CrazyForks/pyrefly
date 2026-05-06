@@ -255,7 +255,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 custom_primary_key_field: django_field_info.primary_key_field.clone().or_else(
                     || inherited_django_metadata.and_then(|dm| dm.custom_primary_key_field.clone()),
                 ),
-                foreign_key_fields: django_field_info.foreign_key_fields.clone(),
+                foreign_key_like_fields: django_field_info.foreign_key_like_fields.clone(),
                 fields_with_choices: django_field_info.fields_with_choices.clone(),
             })
         } else {
