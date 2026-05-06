@@ -470,7 +470,7 @@ impl ClassField {
                 },
                 IsInherited::Maybe,
             )
-        } else if is_method_type(&ty) {
+        } else if ty.has_toplevel_func_metadata() {
             // Synthesized methods (like __init__, __eq__, __iter__, etc.)
             ClassField(
                 ClassFieldInner::Method {
@@ -1398,22 +1398,10 @@ pub enum DataclassMember {
     NotAField,
 }
 
-fn is_method_type(ty: &Type) -> bool {
-    matches!(
-        ty,
-        Type::Function(_)
-            | Type::Overload(_)
-            | Type::Forall(box Forall {
-                body: Forallable::Function(_),
-                ..
-            })
-    )
-}
-
 fn has_any_method_type(ty: &Type) -> bool {
     match ty {
-        Type::Union(union) => union.members.iter().any(is_method_type),
-        _ => is_method_type(ty),
+        Type::Union(union) => union.members.iter().any(|t| t.has_toplevel_func_metadata()),
+        _ => ty.has_toplevel_func_metadata(),
     }
 }
 
