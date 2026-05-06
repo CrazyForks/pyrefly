@@ -79,8 +79,11 @@ use crate::types::annotation::Qualifier;
 use crate::types::callable::FuncMetadata;
 use crate::types::callable::Function;
 use crate::types::callable::Param;
+use crate::types::callable::PropertyMetadata;
+use crate::types::callable::PropertyRole;
 use crate::types::callable::Required;
 use crate::types::class::Class;
+use crate::types::class::ClassKind;
 use crate::types::class::ClassType;
 use crate::types::display::LspDisplayMode;
 use crate::types::display::TypeDisplayContext;
@@ -97,6 +100,7 @@ use crate::types::typed_dict::TypedDictField;
 use crate::types::types::AnyStyle;
 use crate::types::types::BoundMethod;
 use crate::types::types::BoundMethodType;
+use crate::types::types::CalleeKind;
 use crate::types::types::Forall;
 use crate::types::types::Forallable;
 use crate::types::types::Overload;
@@ -2144,6 +2148,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             range,
             errors,
         )
+        .or_else(|| self.get_property_class_field_type(class, name, field_definition))
         .or_else(|| self.get_pydantic_root_model_class_field_type(class, name))
         .or_else(|| {
             let initial_value_expr = match field_definition {
@@ -2157,6 +2162,98 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 _ => None,
             };
             self.get_django_field_type(ty, class, Some(name), initial_value_expr)
+        })
+    }
+
+    /// Recognize `x = property(fget, fset, fdel)` and return the corresponding
+    /// property type, mirroring what the `@property` decorator path produces.
+    fn get_property_class_field_type(
+        &self,
+        class: &Class,
+        name: &Name,
+        field_definition: &ClassFieldDefinition,
+    ) -> Option<Type> {
+        let ClassFieldDefinition::AssignedInBody { value, .. } = field_definition else {
+            return None;
+        };
+        let ExprOrBinding::Expr(expr) = value.as_ref() else {
+            return None;
+        };
+        let call = expr.as_call_expr()?;
+        let errors = self.error_swallower();
+        let callee_ty = self.expr_infer(&call.func, &errors);
+        if !matches!(
+            callee_ty.callee_kind(),
+            Some(CalleeKind::Class(ClassKind::Property(_)))
+        ) {
+            return None;
+        }
+
+        let getter = self.property_constructor_arg(class, name, call, 0, "fget", &errors)?;
+        let setter = self.property_constructor_arg(class, name, call, 1, "fset", &errors);
+        let has_deleter = self
+            .property_constructor_arg(class, name, call, 2, "fdel", &errors)
+            .is_some_and(|ty| !matches!(ty, Type::None));
+
+        let getter_without_property = getter.without_property_metadata();
+        let setter_without_property = setter.as_ref().map(|s| s.without_property_metadata());
+        let (role, mut primary) = match setter {
+            Some(setter) => (PropertyRole::Setter, setter),
+            None => (PropertyRole::Getter, getter),
+        };
+        let mut property_metadata = Some(PropertyMetadata {
+            role,
+            getter: getter_without_property,
+            setter: setter_without_property,
+            has_deleter,
+        });
+        primary.transform_toplevel_func_metadata(|meta| {
+            meta.flags.property_metadata = property_metadata.take();
+        });
+        // If `primary` isn't a function-like type, the closure above is a no-op
+        // and property_metadata is never consumed. Fall back to the default path
+        // rather than returning a type without property metadata attached.
+        if property_metadata.is_some() {
+            return None;
+        }
+        Some(primary)
+    }
+
+    /// Look up a `property()` constructor argument by position or keyword name.
+    fn property_constructor_arg(
+        &self,
+        class: &Class,
+        name: &Name,
+        call: &ExprCall,
+        position: usize,
+        keyword: &str,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        // Positional args take priority; we fall back to keyword search only when
+        // there is no positional arg at `position`. This is safe because Python
+        // forbids positional args after keyword args, so the two can never conflict.
+        let arg = call.arguments.args.get(position).or_else(|| {
+            call.arguments.keywords.iter().find_map(|kw| {
+                (kw.arg
+                    .as_ref()
+                    .is_some_and(|name| name.id.as_str() == keyword))
+                .then_some(&kw.value)
+            })
+        })?;
+        Some(match self.expr_infer(arg, errors) {
+            Type::Callable(callable) => {
+                // Coerce the callable to a function so we can later attach property metadata.
+                Type::Function(Box::new(Function {
+                    signature: *callable,
+                    metadata: FuncMetadata::def(
+                        self.module().dupe(),
+                        class.dupe(),
+                        name.clone(),
+                        None,
+                    ),
+                }))
+            }
+            ty => ty,
         })
     }
 
