@@ -330,6 +330,30 @@ fn find_one_part_in_root(
 /// If `style_filter` is provided, only results matching that style will be returned.
 /// The function will continue searching until it finds a result that matches the style.
 ///
+/// Tracks accumulated namespace package state during `find_one_part`'s search
+/// across multiple roots. Using a dedicated enum instead of `Option<FindResult>`
+/// ensures only the two namespace variants are representable.
+enum NamespaceAccumulator {
+    /// Implicit namespace package (no `__init__.py`). Accumulated directories
+    /// from all roots that contain a same-named directory without an init file.
+    Implicit(Vec1<PathBuf>),
+    /// Legacy namespace package (`pkgutil.extend_path` in `__init__.py`). The
+    /// first field is the winning `__init__` path; the second accumulates every
+    /// same-named directory across all roots.
+    Legacy(PathBuf, Vec1<PathBuf>),
+}
+
+impl NamespaceAccumulator {
+    fn into_find_result(self) -> FindResult {
+        match self {
+            NamespaceAccumulator::Implicit(roots) => FindResult::ImplicitNamespacePackage(roots),
+            NamespaceAccumulator::Legacy(init, roots) => {
+                FindResult::LegacyNamespacePackage(init, roots)
+            }
+        }
+    }
+}
+
 /// If `phantom_paths` is provided, paths that were checked but did not exist will be added to it.
 /// Note: `phantom_paths` and `style_filter` are mutually exclusive.
 fn find_one_part<'a>(
@@ -344,98 +368,67 @@ fn find_one_part<'a>(
         return None;
     }
 
-    // Accumulates a LegacyNamespacePackage (LNP) or ImplicitNamespacePackage (INP) once the
-    // first one is encountered. LNP "wins" over INP.  If an LNP appears after one or more INP
-    // roots, we switch into LNP mode and absorb those prior INP roots into the LNP's __path__.
-    // This mirrors `pkgutil.extend_path`'s runtime behavior, which appends every same-named
-    // directory on sys.path regardless of whether it has an __init__.py. Once LNP mode is active,
-    // later INP roots are also absorbed. RegularPackage short-circuits only when no
-    // namespace_accumulator is None.
-    let mut namespace_accumulator: Option<FindResult> = None;
+    let mut acc: Option<NamespaceAccumulator> = None;
 
     while let Some(root) = roots.next() {
         match find_one_part_in_root(name, root, style_filter, phantom_paths, timing) {
             None => (),
             Some(FindResult::ImplicitNamespacePackage(pkg)) => {
                 let namespace_dir = pkg.into_vec().remove(0);
-                match &mut namespace_accumulator {
-                    None => {
-                        namespace_accumulator = Some(FindResult::ImplicitNamespacePackage(
-                            Vec1::new(namespace_dir),
-                        ));
-                    }
-                    Some(FindResult::ImplicitNamespacePackage(roots)) => roots.push(namespace_dir),
-                    Some(FindResult::LegacyNamespacePackage(_, roots)) => {
-                        // LegacyNamespacePackage mode absorbs implicit namespace dirs: extend_path's runtime
-                        // semantics include every same-named directory on sys.path, with or without __init__.py.
+                match &mut acc {
+                    None => acc = Some(NamespaceAccumulator::Implicit(Vec1::new(namespace_dir))),
+                    Some(NamespaceAccumulator::Implicit(roots)) => roots.push(namespace_dir),
+                    Some(NamespaceAccumulator::Legacy(_, roots)) => {
+                        // extend_path's runtime semantics include every same-named directory
+                        // on sys.path, with or without __init__.py.
                         roots.push(namespace_dir);
                     }
-                    _ => unreachable!(
-                        "accumulator only holds LegacyNamespacePackage or ImplicitNamespacePackage"
-                    ),
                 }
             }
             Some(FindResult::LegacyNamespacePackage(init_path, init_roots)) => {
                 debug_assert_eq!(init_roots.len(), 1);
                 let init_dir = init_roots.into_vec().remove(0);
-                match &mut namespace_accumulator {
+                match &mut acc {
                     None => {
-                        namespace_accumulator = Some(FindResult::LegacyNamespacePackage(
-                            init_path,
-                            Vec1::new(init_dir),
-                        ));
+                        acc = Some(NamespaceAccumulator::Legacy(init_path, Vec1::new(init_dir)));
                     }
-                    Some(FindResult::LegacyNamespacePackage(_, roots)) => roots.push(init_dir),
-                    Some(FindResult::ImplicitNamespacePackage(_)) => {
-                        // Switch from ImplicitNamespacePackage (INP) mode into LegacyNamespacePackage (LNP) mode,
-                        // absorbing the prior INP roots into the LNP's __path__. The new LNP's init_dir comes first
-                        // so it remains the primary winner.
-                        let prior_namespace_roots = match namespace_accumulator.take() {
-                            Some(FindResult::ImplicitNamespacePackage(rs)) => rs.into_vec(),
+                    Some(NamespaceAccumulator::Legacy(_, roots)) => roots.push(init_dir),
+                    Some(NamespaceAccumulator::Implicit(_)) => {
+                        // Switch from Implicit to Legacy mode, absorbing the prior roots.
+                        // The new LNP's init_dir comes first so it remains the primary winner.
+                        let prior = match acc.take() {
+                            Some(NamespaceAccumulator::Implicit(rs)) => rs.into_vec(),
                             _ => unreachable!(),
                         };
                         let mut combined = Vec1::new(init_dir);
-                        combined.extend(prior_namespace_roots);
-                        namespace_accumulator =
-                            Some(FindResult::LegacyNamespacePackage(init_path, combined));
+                        combined.extend(prior);
+                        acc = Some(NamespaceAccumulator::Legacy(init_path, combined));
                     }
-                    _ => unreachable!(
-                        "accumulator only holds LegacyNamespacePackage or ImplicitNamespacePackage"
-                    ),
                 }
             }
-            Some(FindResult::RegularPackage(init_path, init_dir)) => {
-                match &mut namespace_accumulator {
-                    None | Some(FindResult::ImplicitNamespacePackage(_)) => {
-                        // A concrete __init__.py beats an implicit namespace (or no namespace).
-                        // RegularPackage wins exclusively; discard any accumulated INP roots.
-                        return Some((
-                            FindResult::RegularPackage(init_path, init_dir),
-                            roots.cloned().collect(),
-                        ));
-                    }
-                    Some(FindResult::LegacyNamespacePackage(_, roots)) => {
-                        // extend_path includes every same-named directory on sys.path,
-                        // regardless of whether it has an __init__.py.
-                        roots.push(init_dir);
-                    }
-                    _ => unreachable!(
-                        "accumulator only holds LegacyNamespacePackage or ImplicitNamespacePackage"
-                    ),
+            Some(FindResult::RegularPackage(init_path, init_dir)) => match &mut acc {
+                None | Some(NamespaceAccumulator::Implicit(_)) => {
+                    // A concrete __init__.py beats an implicit namespace (or no namespace).
+                    return Some((
+                        FindResult::RegularPackage(init_path, init_dir),
+                        roots.cloned().collect(),
+                    ));
                 }
-            }
-            Some(result) if namespace_accumulator.is_none() => {
-                // Single-file or compiled module with no LegacyNamespacePackage/ImplicitNamespacePackage
-                // mode active: short-circuit and let find_module_components consider the remaining roots
-                // in case a higher-priority result lives there.
+                Some(NamespaceAccumulator::Legacy(_, roots)) => {
+                    // extend_path includes every same-named directory on sys.path.
+                    roots.push(init_dir);
+                }
+            },
+            Some(result) if acc.is_none() => {
+                // Single-file or compiled module with no namespace mode active.
                 return Some((result, roots.cloned().collect::<Vec<_>>()));
             }
-            // LegacyNamespacePackage or ImplicitNamespacePackage mode is active: ignore non-package results.
+            // Namespace mode is active: ignore non-package results.
             Some(_) => {}
         }
     }
 
-    namespace_accumulator.map(|result| (result, vec![]))
+    acc.map(|a| (a.into_find_result(), vec![]))
 }
 
 /// Finds the first package (regular, single file, or namespace) in search roots. Returns None if no module is found.
