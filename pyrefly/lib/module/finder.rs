@@ -2028,6 +2028,260 @@ mod tests {
     }
 
     #[test]
+    fn test_single_file_wins_over_dir_without_init() {
+        // Verified against CPython 3.9: when both `a/b.py` and `a/b/c.py`
+        // exist but `a/b/` has no `__init__.py`, `a.b` resolves to `b.py`
+        // (a single-file module) and `a.b.c` is not importable.
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![TestPath::dir(
+                "root",
+                vec![TestPath::dir(
+                    "a",
+                    vec![
+                        TestPath::file("__init__.py"),
+                        TestPath::file("b.py"),
+                        TestPath::dir("b", vec![TestPath::file("c.py")]),
+                    ],
+                )],
+            )],
+        );
+        let roots = [root.join("root")];
+
+        // `a.b` resolves to the single file `b.py`, not the directory.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("root/a/b.py")))
+        );
+
+        // `a.b.c` is not reachable: `b.py` is a module, not a package.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b.c"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_package_init_wins_over_single_file() {
+        // Verified against CPython 3.9: when both `a/b.py` and
+        // `a/b/__init__.py` exist, the package wins — `a.b` resolves to
+        // `__init__.py` and `a.b.c` is reachable.
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![TestPath::dir(
+                "root",
+                vec![TestPath::dir(
+                    "a",
+                    vec![
+                        TestPath::file("__init__.py"),
+                        TestPath::file("b.py"),
+                        TestPath::dir(
+                            "b",
+                            vec![TestPath::file("__init__.py"), TestPath::file("c.py")],
+                        ),
+                    ],
+                )],
+            )],
+        );
+        let roots = [root.join("root")];
+
+        // `a.b` resolves to the package's `__init__.py`, not `b.py`.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("root/a/b/__init__.py")))
+        );
+
+        // `a.b.c` is reachable via the package.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b.c"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("root/a/b/c.py")))
+        );
+    }
+
+    #[test]
+    fn test_pkgutil_init_wins_over_single_file() {
+        // Verified against CPython 3.9: when both `a/b.py` and
+        // `a/b/__init__.py` (with extend_path) exist, the pkgutil package
+        // wins — `a.b` resolves to `__init__.py` and `a.b.c` is reachable.
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![TestPath::dir(
+                "root",
+                vec![TestPath::dir(
+                    "a",
+                    vec![
+                        TestPath::file("__init__.py"),
+                        TestPath::file("b.py"),
+                        TestPath::dir(
+                            "b",
+                            vec![TestPath::file("__init__.py"), TestPath::file("c.py")],
+                        ),
+                    ],
+                )],
+            )],
+        );
+        std::fs::write(root.join("root/a/b/__init__.py"), PKGUTIL_INIT).unwrap();
+        let roots = [root.join("root")];
+
+        // `a.b` resolves to the pkgutil package's `__init__.py`, not `b.py`.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("root/a/b/__init__.py")))
+        );
+
+        // `a.b.c` is reachable via the pkgutil package.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b.c"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("root/a/b/c.py")))
+        );
+    }
+
+    #[test]
+    fn test_regular_package_then_legacy_namespace_package() {
+        // Verified against CPython 3.9: when root0 has a regular package and
+        // root1 has an LNP, the regular package wins exclusively — a.c from
+        // root1 is NOT reachable.
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::dir(
+                    "search_root0",
+                    vec![TestPath::dir(
+                        "a",
+                        vec![TestPath::file("__init__.py"), TestPath::file("b.py")],
+                    )],
+                ),
+                TestPath::dir(
+                    "search_root1",
+                    vec![TestPath::dir(
+                        "a",
+                        vec![TestPath::file("__init__.py"), TestPath::file("c.py")],
+                    )],
+                ),
+            ],
+        );
+        std::fs::write(root.join("search_root0/a/__init__.py"), "").unwrap();
+        std::fs::write(root.join("search_root1/a/__init__.py"), PKGUTIL_INIT).unwrap();
+        let roots = [root.join("search_root0"), root.join("search_root1")];
+
+        // `a` resolves to root0's regular package.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(
+                root.join("search_root0/a/__init__.py")
+            ))
+        );
+
+        // `a.b` is reachable from root0.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("search_root0/a/b.py")))
+        );
+
+        // `a.c` is NOT reachable: regular package is exclusive.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.c"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn test_is_pkgutil_namespace_detection() {
         let tempdir = tempfile::tempdir().unwrap();
         let root = tempdir.path();
