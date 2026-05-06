@@ -90,7 +90,8 @@ static PKGUTIL_EXTEND_PATH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 /// Note: pyrefly's search root ordering may not exactly match Python's `sys.path`
 /// ordering in all configurations, so in rare cases a different `__init__.py` may be
 /// selected as the primary package entry point than what Python would choose at runtime.
-fn is_pkgutil_namespace(init_path: &Path) -> bool {
+fn is_pkgutil_namespace(init_path: &Path, timing: Option<&TransactionTimingCounters>) -> bool {
+    let start = timing.map(|_| Instant::now());
     let Ok(mut file) = std::fs::File::open(init_path) else {
         return false;
     };
@@ -101,6 +102,14 @@ fn is_pkgutil_namespace(init_path: &Path) -> bool {
             Ok(0) => break,
             Ok(n) => total += n,
             Err(_) => return false,
+        }
+    }
+    if let Some(t) = timing {
+        let elapsed_ns = start.unwrap().elapsed().as_nanos() as u64;
+        t.total_read_count.fetch_add(1, Ordering::Relaxed);
+        if elapsed_ns > 1_000_000 {
+            t.slow_read_count.fetch_add(1, Ordering::Relaxed);
+            t.slow_read_ns.fetch_add(elapsed_ns, Ordering::Relaxed);
         }
     }
     // `from_utf8_lossy` replaces invalid bytes with U+FFFD, which cannot match
@@ -247,7 +256,7 @@ fn find_one_part_in_root(
         for candidate_init_suffix in candidate_init_suffixes {
             let init_path = candidate_dir.join(candidate_init_suffix);
             if timed_stat(timing, || init_path.exists()) {
-                if is_pkgutil_namespace(&init_path) {
+                if is_pkgutil_namespace(&init_path, timing) {
                     return Some(FindResult::LegacyNamespacePackage(
                         init_path,
                         Vec1::new(candidate_dir),
@@ -454,7 +463,7 @@ fn find_one_part_prefix<'a>(
                             for candidate_init_suffix in ["__init__.pyi", "__init__.py"] {
                                 let init_path = path.join(candidate_init_suffix);
                                 if init_path.exists() {
-                                    let result = if is_pkgutil_namespace(&init_path) {
+                                    let result = if is_pkgutil_namespace(&init_path, None) {
                                         FindResult::LegacyNamespacePackage(
                                             init_path,
                                             Vec1::new(path.clone()),
@@ -2037,7 +2046,7 @@ mod tests {
             "from pkgutil import extend_path\n__path__ = extend_path(__path__, __name__)\n",
         )
         .unwrap();
-        assert!(is_pkgutil_namespace(&init1));
+        assert!(is_pkgutil_namespace(&init1, None));
 
         // One-liner import form.
         let init2 = root.join("init2.py");
@@ -2046,7 +2055,7 @@ mod tests {
             "__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n",
         )
         .unwrap();
-        assert!(is_pkgutil_namespace(&init2));
+        assert!(is_pkgutil_namespace(&init2, None));
 
         // Qualified name form.
         let init3 = root.join("init3.py");
@@ -2055,17 +2064,17 @@ mod tests {
             "import pkgutil\n__path__ = pkgutil.extend_path(__path__, __name__)\n",
         )
         .unwrap();
-        assert!(is_pkgutil_namespace(&init3));
+        assert!(is_pkgutil_namespace(&init3, None));
 
         // Regular __init__.py (no extend_path).
         let init4 = root.join("init4.py");
         std::fs::write(&init4, "from . import foo\n__all__ = ['foo']\n").unwrap();
-        assert!(!is_pkgutil_namespace(&init4));
+        assert!(!is_pkgutil_namespace(&init4, None));
 
         // Empty __init__.py.
         let init5 = root.join("init5.py");
         std::fs::write(&init5, "").unwrap();
-        assert!(!is_pkgutil_namespace(&init5));
+        assert!(!is_pkgutil_namespace(&init5, None));
 
         // extend_path appearing inside a `#` comment line is not detected.
         let init_comment = root.join("init_comment.py");
@@ -2074,7 +2083,7 @@ mod tests {
             "# __path__ = pkgutil.extend_path(__path__, __name__)\n",
         )
         .unwrap();
-        assert!(!is_pkgutil_namespace(&init_comment));
+        assert!(!is_pkgutil_namespace(&init_comment, None));
 
         // An inline `#` comment between `=` and `extend_path` rules out a match
         // (the regex disallows `#` between `=` and `extend_path`).
@@ -2084,7 +2093,7 @@ mod tests {
             "__path__ = pkgutil. # commented out\n    extend_path(__path__, __name__)\n",
         )
         .unwrap();
-        assert!(!is_pkgutil_namespace(&init_inline_comment));
+        assert!(!is_pkgutil_namespace(&init_inline_comment, None));
 
         // Identifiers that merely end in `extend_path` are not matched.
         let init_suffix = root.join("init_suffix.py");
@@ -2093,7 +2102,7 @@ mod tests {
             "__path__ = mymod._extend_path(__path__, __name__)\n",
         )
         .unwrap();
-        assert!(!is_pkgutil_namespace(&init_suffix));
+        assert!(!is_pkgutil_namespace(&init_suffix, None));
 
         // A multi-line `extend_path` call (parenthesized assignment that
         // breaks across lines between `=` and `extend_path`) is a known
@@ -2104,7 +2113,7 @@ mod tests {
             "__path__ = (\n    pkgutil.extend_path(__path__, __name__)\n)\n",
         )
         .unwrap();
-        assert!(!is_pkgutil_namespace(&init_multiline));
+        assert!(!is_pkgutil_namespace(&init_multiline, None));
 
         // A trailing inline comment after the call still matches — the regex
         // only needs to see through the opening paren.
@@ -2114,7 +2123,7 @@ mod tests {
             "__path__ = pkgutil.extend_path(__path__, __name__)  # legacy ns\n",
         )
         .unwrap();
-        assert!(is_pkgutil_namespace(&init_trailing_comment));
+        assert!(is_pkgutil_namespace(&init_trailing_comment, None));
 
         // Indented `__path__` (e.g. assigned in a conditional) still matches.
         let init_indented = root.join("init_indented.py");
@@ -2123,7 +2132,7 @@ mod tests {
             "if True:\n    __path__ = pkgutil.extend_path(__path__, __name__)\n",
         )
         .unwrap();
-        assert!(is_pkgutil_namespace(&init_indented));
+        assert!(is_pkgutil_namespace(&init_indented, None));
 
         // The `extend_path` call must appear within the first
         // `PKGUTIL_DETECTION_MAX_BYTES` of the file. Anything past that
@@ -2136,7 +2145,7 @@ mod tests {
         }
         padding.push_str("__path__ = pkgutil.extend_path(__path__, __name__)\n");
         std::fs::write(&init_truncated, &padding).unwrap();
-        assert!(!is_pkgutil_namespace(&init_truncated));
+        assert!(!is_pkgutil_namespace(&init_truncated, None));
     }
 
     #[test]

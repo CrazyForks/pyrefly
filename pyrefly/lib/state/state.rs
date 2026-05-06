@@ -605,7 +605,7 @@ pub struct TransactionTimingCounters {
     pub total_stat_count: AtomicU64,
     pub slow_stat_count: AtomicU64,
     pub slow_stat_ns: AtomicU64,
-    // Filesystem read latency (read_to_string in load)
+    // Filesystem read latency (read_to_string in load, pkgutil detection in finder)
     pub total_read_count: AtomicU64,
     pub slow_read_count: AtomicU64,
     pub slow_read_ns: AtomicU64,
