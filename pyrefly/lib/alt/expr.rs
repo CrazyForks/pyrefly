@@ -2973,17 +2973,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     e.member.clone(),
                 ))
             }
-            Type::Function(f) => Some(ConditionRedundantReason::Function(
+            ty if let Some(kind) = ty.to_func_kind() => Some(ConditionRedundantReason::Function(
                 self.module().name(),
-                f.metadata.kind.clone(),
-            )),
-            Type::Overload(f) => Some(ConditionRedundantReason::Function(
-                self.module().name(),
-                f.metadata.kind.clone(),
-            )),
-            Type::BoundMethod(f) => Some(ConditionRedundantReason::Function(
-                self.module().name(),
-                f.func.metadata().kind.clone(),
+                kind.clone(),
             )),
             Type::ClassDef(cls) => Some(ConditionRedundantReason::Class(cls.name().clone())),
             _ => None,
