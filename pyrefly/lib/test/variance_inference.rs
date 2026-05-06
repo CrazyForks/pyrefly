@@ -18,7 +18,7 @@ T = TypeVar("T", contravariant=True)
 # - U needs to has its variance inferred (to be covariant)
 # - T has its variance specified incorrectly -- but downstream logic is expected to respect it.
 class Foo[U](Generic[T]):  # E: Type parameter T is not included in the type parameter list
-    def m0(self) -> T: ...  # E: Type variable `T` is Contravariant but is used in covariant position
+    def m0(self) -> T: ...  # E: Type variable `T` is contravariant but is used in covariant position
     def m1(self) -> U: ...
 
 t_good: Foo[int, int] = Foo[int, float]()
@@ -350,47 +350,47 @@ class Inv(Generic[T]): ...
 class CoContra(Generic[T_co, T_contra]): ...
 
 class Class1(
-    Inv[T_co]  # E: Type variable `T_co` is Covariant but is used in invariant position
+    Inv[T_co]  # E: Type variable `T_co` is covariant but is used in invariant position
 ): ...
 class Class2(
-    Inv[T_contra]  # E: Type variable `T_contra` is Contravariant but is used in invariant position
+    Inv[T_contra]  # E: Type variable `T_contra` is contravariant but is used in invariant position
 ): ...
 
 class Co_Child3(
-    Co[T_contra]  # E: Type variable `T_contra` is Contravariant but is used in covariant position
+    Co[T_contra]  # E: Type variable `T_contra` is contravariant but is used in covariant position
 ): ...
 class Contra_Child3(
-    Contra[T_co]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    Contra[T_co]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 class Contra_Child5(
-    Contra[Co[T_co]]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    Contra[Co[T_co]]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 
 class CoContra_Child2(
-    CoContra[T_co, T_co]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    CoContra[T_co, T_co]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 class CoContra_Child3(
-    CoContra[T_contra, T_contra]  # E: Type variable `T_contra` is Contravariant but is used in covariant position
+    CoContra[T_contra, T_contra]  # E: Type variable `T_contra` is contravariant but is used in covariant position
 ): ...
 class CoContra_Child5(
-    CoContra[Co[T_co], Co[T_co]]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    CoContra[Co[T_co], Co[T_co]]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 
 class CoToContraToContra(
-    Contra[Co[Contra[T_contra]]]  # E: Type variable `T_contra` is Contravariant but is used in covariant position
+    Contra[Co[Contra[T_contra]]]  # E: Type variable `T_contra` is contravariant but is used in covariant position
 ): ...
 class ContraToContraToContra(
-    Contra[Contra[Contra[T_co]]]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    Contra[Contra[Contra[T_co]]]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 
 Co_TA = Co[T_co]
 Contra_TA = Contra[T_contra]
 
 class CoToContraToContra_WithTA(
-    Contra_TA[Co_TA[Contra_TA[T_contra]]]  # E: Type variable `T_contra` is Contravariant but is used in covariant position
+    Contra_TA[Co_TA[Contra_TA[T_contra]]]  # E: Type variable `T_contra` is contravariant but is used in covariant position
 ): ...
 class ContraToContraToContra_WithTA(
-    Contra_TA[Contra_TA[Contra_TA[T_co]]]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    Contra_TA[Contra_TA[Contra_TA[T_co]]]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 "#,
 );
@@ -411,13 +411,13 @@ class Protocol4(Protocol[T1]):  # E: Type variable `T1` in class `Protocol4` is 
     def m1(self, p0: T1) -> None: ...
 
 class Protocol5(Protocol[T1_co]):
-    def m1(self, p0: T1_co) -> None: ...  # E: Type variable `T1_co` is Covariant but is used in contravariant position
+    def m1(self, p0: T1_co) -> None: ...  # E: Type variable `T1_co` is covariant but is used in contravariant position
 
 class Protocol6(Protocol[T1]):  # E: Type variable `T1` in class `Protocol6` is declared as invariant, but could be covariant based on its usage
     def m1(self) -> T1: ...
 
 class Protocol7(Protocol[T1_contra]):
-    def m1(self) -> T1_contra: ...  # E: Type variable `T1_contra` is Contravariant but is used in covariant position
+    def m1(self) -> T1_contra: ...  # E: Type variable `T1_contra` is contravariant but is used in covariant position
 
 class Protocol12(Protocol[T1]):  # E: Type variable `T1` in class `Protocol12` is declared as invariant, but could be covariant based on its usage
     def __init__(self, x: T1) -> None: ...
@@ -431,7 +431,7 @@ from typing import TypeVar, Generic
 T_co = TypeVar("T_co", covariant=True)
 
 class Foo(Generic[T_co]):
-    def f(self, x: T_co) -> None: ...  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    def f(self, x: T_co) -> None: ...  # E: Type variable `T_co` is covariant but is used in contravariant position
 "#,
 );
 
@@ -442,7 +442,7 @@ from typing import TypeVar, Generic
 T_contra = TypeVar("T_contra", contravariant=True)
 
 class Foo(Generic[T_contra]):
-    def f(self) -> T_contra: ...  # E: Type variable `T_contra` is Contravariant but is used in covariant position
+    def f(self) -> T_contra: ...  # E: Type variable `T_contra` is contravariant but is used in covariant position
 "#,
 );
 
@@ -545,7 +545,7 @@ T = TypeVar("T")
 class Inv(Generic[T]): ...
 
 class Foo(
-    Inv[T_co]  # E: Type variable `T_co` is Covariant but is used in invariant position
+    Inv[T_co]  # E: Type variable `T_co` is covariant but is used in invariant position
 ): ...
 "#,
 );
@@ -560,7 +560,7 @@ T = TypeVar("T")
 class Inv(Generic[T]): ...
 
 class Foo(
-    Inv[T_contra]  # E: Type variable `T_contra` is Contravariant but is used in invariant position
+    Inv[T_contra]  # E: Type variable `T_contra` is contravariant but is used in invariant position
 ): ...
 "#,
 );
@@ -575,7 +575,7 @@ T_contra = TypeVar("T_contra", contravariant=True)
 class Contra(Generic[T_contra]): ...
 
 class Foo(
-    Contra[T_co]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    Contra[T_co]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 "#,
 );
@@ -590,7 +590,7 @@ T_contra = TypeVar("T_contra", contravariant=True)
 class Co(Generic[T_co]): ...
 
 class Foo(
-    Co[T_contra]  # E: Type variable `T_contra` is Contravariant but is used in covariant position
+    Co[T_contra]  # E: Type variable `T_contra` is contravariant but is used in covariant position
 ): ...
 "#,
 );
@@ -607,7 +607,7 @@ class Contra(Generic[T_contra]): ...
 
 # pyright errors and mypy does not
 class Foo(
-    Contra[Co[T_co]]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    Contra[Co[T_co]]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 "#,
 );
@@ -623,7 +623,7 @@ class Contra(Generic[T_contra]): ...
 
 # pyright errors and mypy does not
 class Foo(
-    Contra[Contra[Contra[T_co]]]  # E: Type variable `T_co` is Covariant but is used in contravariant position
+    Contra[Contra[Contra[T_co]]]  # E: Type variable `T_co` is covariant but is used in contravariant position
 ): ...
 "#,
 );
@@ -689,7 +689,7 @@ T_co = TypeVar("T_co", covariant=True)
 
 class C(Generic[T_co]):
     @overload
-    def f(self, x: int) -> int: ...  # E: `T_co` is Covariant but is used in contravariant position
+    def f(self, x: int) -> int: ...  # E: `T_co` is covariant but is used in contravariant position
     @overload
     def f(self, x: T_co) -> str: ...
     def f(self, x: Any) -> Any: ...
