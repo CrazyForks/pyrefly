@@ -34,11 +34,11 @@ use ruff_python_ast::PySourceType;
 use ruff_python_ast::Stmt;
 use ruff_python_ast::UnaryOp as RuffUnaryOp;
 
+use crate::dimension::ShapeError;
+use crate::dimension::SizeExpr;
 use crate::dimension::canonicalize;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
-use crate::tensor::ShapeError;
-use crate::tensor::SizeExpr;
 use crate::tensor::TensorShape;
 use crate::tensor::TensorType;
 use crate::tuple::Tuple;
@@ -165,9 +165,9 @@ impl Val {
 /// These are used in `bind_dsl_params()` to convert bound Python types
 /// to runtime values. Each returns `None` if the type doesn't match.
 pub(crate) mod extract {
+    use crate::dimension::SizeExpr;
     use crate::literal::Lit;
     use crate::literal::Literal;
-    use crate::tensor::SizeExpr;
     use crate::tensor::TensorShape;
     use crate::tuple::Tuple;
     use crate::types::Type;
