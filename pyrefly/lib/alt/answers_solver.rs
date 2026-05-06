@@ -1597,7 +1597,7 @@ impl ThreadState {
 
     /// Install a fresh trace sink for the current calculation, saving any
     /// existing sink for later restoration.
-    pub(crate) fn install_trace_sink(&self) {
+    fn install_trace_sink(&self) {
         let previous = self.trace_sink.borrow_mut().take();
         self.trace_sink_stack.borrow_mut().push(previous);
         *self.trace_sink.borrow_mut() = Some(TraceSideEffects::default());
@@ -1605,7 +1605,7 @@ impl ThreadState {
 
     /// Take the accumulated trace side effects, restoring any saved sink
     /// from an outer calculation.
-    pub(crate) fn take_trace_sink(&self) -> Option<TraceSideEffects> {
+    fn take_trace_sink(&self) -> Option<TraceSideEffects> {
         let result = self.trace_sink.borrow_mut().take();
         let restored = self.trace_sink_stack.borrow_mut().pop().flatten();
         *self.trace_sink.borrow_mut() = restored;
@@ -1847,7 +1847,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .insert((self.module().name(), id), var);
     }
 
-    pub(crate) fn get_lambda_param_var(&self, id: LambdaParamId) -> Option<Var> {
+    fn get_lambda_param_var(&self, id: LambdaParamId) -> Option<Var> {
         self.thread_state
             .lambda_param_vars
             .borrow()
@@ -1855,7 +1855,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .copied()
     }
 
-    pub(crate) fn get_or_create_lambda_param_var(&self, id: LambdaParamId) -> Var {
+    fn get_or_create_lambda_param_var(&self, id: LambdaParamId) -> Var {
         if let Some(var) = self.get_lambda_param_var(id) {
             var
         } else {

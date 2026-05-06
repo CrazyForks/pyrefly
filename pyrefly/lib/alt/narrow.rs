@@ -1820,7 +1820,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     /// Determines if a type should be checked for match exhaustiveness.
     /// We check exhaustiveness when the type has a finite, known set of possible values.
-    pub(crate) fn should_check_exhaustiveness(&self, ty: &Type) -> bool {
+    fn should_check_exhaustiveness(&self, ty: &Type) -> bool {
         match ty {
             Type::ClassType(cls) => {
                 // Final classes can't have subclasses, so they are exhaustible, with the exception

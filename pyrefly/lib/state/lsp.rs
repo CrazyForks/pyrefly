@@ -105,7 +105,7 @@ pub(crate) enum CalleeKind {
     Unknown,
 }
 
-pub(crate) fn callee_kind_from_call(call: &ExprCall) -> CalleeKind {
+fn callee_kind_from_call(call: &ExprCall) -> CalleeKind {
     match call.func.as_ref() {
         Expr::Name(name) => CalleeKind::Function(Ast::expr_name_identifier(name.clone())),
         Expr::Attribute(attr) => CalleeKind::Method(attr.value.range(), attr.attr.clone()),
@@ -3386,7 +3386,7 @@ impl<'a> Transaction<'a> {
     ///
     /// Returns `Some(Vec<TextRange>)` containing the text ranges of all keyword argument usages
     /// that reference this parameter definition, or `None` if the AST cannot be retrieved.
-    pub(crate) fn local_keyword_argument_references_from_parameter_definition(
+    fn local_keyword_argument_references_from_parameter_definition(
         &self,
         handle: &Handle,
         definition_range: TextRange,

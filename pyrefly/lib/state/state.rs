@@ -704,7 +704,7 @@ impl<'a> Transaction<'a> {
         data
     }
 
-    pub(crate) fn timing(&self) -> &TransactionTimingCounters {
+    fn timing(&self) -> &TransactionTimingCounters {
         &self.timing
     }
 
