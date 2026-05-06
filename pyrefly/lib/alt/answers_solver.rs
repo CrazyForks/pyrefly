@@ -3128,7 +3128,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     .suggest_enum_member_for_value(got, want)
                     .map(|s| format!("Did you mean `{s}`?"));
                 self.solver()
-                    .error(got, want, errors, loc, tcc, error, note);
+                    .error(got, want, errors, loc, tcc, error, note, Vec::new());
                 false
             }
         }
