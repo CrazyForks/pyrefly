@@ -1701,6 +1701,265 @@ mod tests {
     }
 
     #[test]
+    fn test_implicit_namespace_then_regular_package() {
+        // BUG: When root0 has an implicit namespace dir (no __init__.py) and
+        // root1 has a regular package, the regular package should win
+        // exclusively. Verified against CPython 3.9: a.__path__ = [root1/a],
+        // a.c is reachable, a.b is not.
+        //
+        // Current behavior: the INP accumulator absorbs root0, then silently
+        // drops root1's RegularPackage. So `a` resolves as ImplicitNamespacePackage
+        // pointing only at root0. find_module returns None for `a` itself
+        // (INP results go to namespaces_found, not the return value), but a.b
+        // is reachable through the namespace and a.c is not — the opposite of
+        // correct behavior.
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::dir(
+                    "search_root0",
+                    vec![TestPath::dir("a", vec![TestPath::file("b.py")])],
+                ),
+                TestPath::dir(
+                    "search_root1",
+                    vec![TestPath::dir(
+                        "a",
+                        vec![TestPath::file("__init__.py"), TestPath::file("c.py")],
+                    )],
+                ),
+            ],
+        );
+        let roots = [root.join("search_root0"), root.join("search_root1")];
+
+        // BUG: should resolve to root1's __init__.py via RegularPackage, but
+        // currently returns None (the result is an INP which goes to
+        // namespaces_found instead of the return value).
+        let mut namespaces = vec![];
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a"),
+                roots.iter(),
+                &mut namespaces,
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            ),
+            None
+        );
+        // The INP root0/a ends up in namespaces_found instead.
+        assert_eq!(namespaces, vec![root.join("search_root0/a")]);
+
+        // BUG: should be reachable (root1 owns `a`), but currently not found
+        // because only root0/a is in the namespace.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.c"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            ),
+            None
+        );
+
+        // BUG: should NOT be reachable (root1's regular package claims `a`
+        // exclusively), but currently found because root0/a is the namespace.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("search_root0/a/b.py")))
+        );
+    }
+
+    #[test]
+    fn test_legacy_namespace_package_then_regular_package() {
+        // BUG: extend_path at runtime includes every same-named directory
+        // on sys.path regardless of __init__.py content. The LNP should
+        // absorb root1's directory, making a.c reachable. Currently root1's
+        // RegularPackage is ignored entirely.
+        //
+        // Once `find_one_part` enters LegacyNamespacePackage (LNP) mode
+        // (root0 has an extend_path __init__.py), a *regular* package in
+        // a later root must NOT take over the resolution. The LNP keeps
+        // the winning __init__ from root0.
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::dir(
+                    "search_root0",
+                    vec![TestPath::dir(
+                        "a",
+                        vec![TestPath::file("__init__.py"), TestPath::file("b.py")],
+                    )],
+                ),
+                TestPath::dir(
+                    "search_root1",
+                    vec![TestPath::dir(
+                        "a",
+                        vec![TestPath::file("__init__.py"), TestPath::file("c.py")],
+                    )],
+                ),
+            ],
+        );
+        // root0's __init__.py is an LegacyNamespacePackage; root1's is a plain regular package.
+        std::fs::write(root.join("search_root0/a/__init__.py"), PKGUTIL_INIT).unwrap();
+        std::fs::write(root.join("search_root1/a/__init__.py"), "").unwrap();
+        let roots = [root.join("search_root0"), root.join("search_root1")];
+        // `a` resolves to the LegacyNamespacePackage's __init__.py from root0.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(
+                root.join("search_root0/a/__init__.py")
+            ))
+        );
+        // `a.b` is reachable (root0).
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("search_root0/a/b.py")))
+        );
+        // BUG: `a.c` should be reachable (extend_path absorbs root1's dir),
+        // but currently not found because root1's RegularPackage is ignored.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.c"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_legacy_namespace_package_absorbs_regular_package_dir() {
+        // BUG: This is the same scenario as
+        // test_legacy_namespace_package_then_regular_package but tests
+        // find_module directly (the other test was from the original PR).
+        // Verified against CPython 3.9: a.__path__ = [root0/a, root1/a],
+        // both a.b and a.c are reachable.
+        //
+        // Current behavior: the LNP accumulator ignores root1's
+        // RegularPackage entirely — its directory is not absorbed, so a.c
+        // is unreachable.
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::dir(
+                    "search_root0",
+                    vec![TestPath::dir(
+                        "a",
+                        vec![TestPath::file("__init__.py"), TestPath::file("b.py")],
+                    )],
+                ),
+                TestPath::dir(
+                    "search_root1",
+                    vec![TestPath::dir(
+                        "a",
+                        vec![TestPath::file("__init__.py"), TestPath::file("c.py")],
+                    )],
+                ),
+            ],
+        );
+        std::fs::write(root.join("search_root0/a/__init__.py"), PKGUTIL_INIT).unwrap();
+        std::fs::write(root.join("search_root1/a/__init__.py"), "").unwrap();
+        let roots = [root.join("search_root0"), root.join("search_root1")];
+
+        // This is correct: `a` resolves to root0's LNP __init__.py.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(
+                root.join("search_root0/a/__init__.py")
+            ))
+        );
+
+        // This is correct: `a.b` is reachable from root0.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.b"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            )
+            .unwrap(),
+            FindingOrError::new_finding(ModulePath::filesystem(root.join("search_root0/a/b.py")))
+        );
+
+        // BUG: `a.c` should be reachable (extend_path absorbs root1's dir),
+        // but currently not found because root1's RegularPackage is ignored.
+        assert_eq!(
+            find_module(
+                ModuleName::from_str("a.c"),
+                roots.iter(),
+                &mut vec![],
+                None,
+                None,
+                false,
+                &mut None,
+                None,
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn test_legacy_namespace_package_pyi_init() {
         // An `__init__.pyi` containing extend_path text is also classified
         // as LegacyNamespacePackage — the regex match is by content, not filename. This pins
