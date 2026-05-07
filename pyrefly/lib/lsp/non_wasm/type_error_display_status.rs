@@ -309,8 +309,6 @@ impl TypeErrorDisplayStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// Unit tests for the V2 status-bar response derivation. The test
     /// matrix covers the four `SynthesizedPresetReason` cases plus the
     /// configured-file branches. The full LSP integration (parsing the
