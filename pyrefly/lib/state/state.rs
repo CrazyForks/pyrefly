@@ -109,6 +109,7 @@ use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorInfo;
 use crate::export::exports::Export;
 use crate::export::exports::ExportLocation;
+use crate::export::exports::ExportOrigin;
 use crate::export::exports::Exports;
 use crate::export::exports::LookupExport;
 use crate::export::special::SpecialExport;
@@ -2867,13 +2868,13 @@ impl<'a> LookupExport for TransactionHandle<'a> {
         )?
     }
 
-    fn is_final(&self, mut module: ModuleName, name: &Name) -> bool {
+    fn is_final(&self, mut module: ModuleName, name: &Name) -> ExportOrigin {
         let mut seen = HashSet::new();
         let mut name = name.clone();
 
-        loop {
+        let is_final = loop {
             if !seen.insert(module) {
-                return false; // Cycle detected
+                break false; // Cycle detected
             }
 
             let next = self
@@ -2891,7 +2892,7 @@ impl<'a> LookupExport for TransactionHandle<'a> {
                 .unwrap_or(Err(false));
 
             match next {
-                Err(is_final) => return is_final,
+                Err(is_final) => break is_final,
                 Ok((other_module, original_name)) => {
                     if let Some(original_name) = original_name {
                         name = original_name;
@@ -2899,6 +2900,11 @@ impl<'a> LookupExport for TransactionHandle<'a> {
                     module = other_module;
                 }
             }
+        };
+
+        ExportOrigin {
+            origin: (module, name),
+            is_final,
         }
     }
 }
