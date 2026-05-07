@@ -310,6 +310,14 @@ const config: Config = {
                   component: '@site/src/pages/redirect-getting-started.tsx',
                   exact: true,
                 });
+                addRoute({
+                  path: '/pycon26/challenge',
+                  component: '@site/src/pages/externalRedirect.tsx',
+                  exact: true,
+                  props: {
+                    url: 'https://github.com/migeed-z/pyrefly-type-challenge',
+                  },
+                });
               },
             };
         },
