@@ -148,7 +148,8 @@ fn timed_stat(timing: Option<&TransactionTimingCounters>, f: impl FnOnce() -> bo
 ///
 /// Entries store the file type (is_dir) alongside the name. On Linux this comes
 /// from d_type in the dirent struct, so DirEntry::file_type() requires no extra
-/// stat call.
+/// stat call. Symlinks are followed via metadata() (stat) to determine the true
+/// type of the target, preserving the behavior of the old path.is_dir() checks.
 ///
 /// The cache lives inside `LoaderFindCache` and is never invalidated —
 /// file-change events cause `invalidate_find` to replace loaders in the state.
@@ -220,7 +221,16 @@ impl DirEntryCache {
                 entries
                     .filter_map(|e| e.ok())
                     .map(|e| {
-                        let is_dir = e.file_type().is_ok_and(|ft| ft.is_dir());
+                        let is_dir = e.file_type().is_ok_and(|ft| {
+                            if ft.is_symlink() {
+                                // DirEntry::file_type() reads d_type from readdir which
+                                // does not follow symlinks. Follow the symlink via
+                                // metadata() (stat) to determine the true type.
+                                std::fs::metadata(e.path()).is_ok_and(|m| m.file_type().is_dir())
+                            } else {
+                                ft.is_dir()
+                            }
+                        });
                         (e.file_name(), is_dir)
                     })
                     .collect(),
@@ -326,7 +336,7 @@ fn find_one_part_in_root(
     root: &Path,
     style_filter: Option<ModuleStyle>,
     phantom_paths: &mut Option<&mut Vec<PathBuf>>,
-    _dir_cache: &DirEntryCache,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> Option<FindResult> {
     let candidate_dir = root.join(name.as_str());
@@ -342,13 +352,13 @@ fn find_one_part_in_root(
     // Check if the directory exists first — this is a single stat call that
     // lets us skip the __init__.py[i] lookups when the directory doesn't exist,
     // saving 2 stat calls per non-existent directory path component.
-    let dir_exists = timed_stat(timing, || candidate_dir.is_dir());
+    let dir_exists = timed_stat(timing, || dir_cache.dir_exists(&candidate_dir));
 
     if dir_exists {
         // Check if `name` corresponds to a regular or legacy namespace package.
         for candidate_init_suffix in candidate_init_suffixes {
             let init_path = candidate_dir.join(candidate_init_suffix);
-            if timed_stat(timing, || init_path.exists()) {
+            if timed_stat(timing, || dir_cache.file_exists(&init_path)) {
                 if is_pkgutil_namespace(&init_path, timing) {
                     return Some(FindResult::LegacyNamespacePackage(
                         init_path,
@@ -370,7 +380,7 @@ fn find_one_part_in_root(
     // Check if `name` corresponds to a single-file module.
     for candidate_file_suffix in ["pyi", "py"] {
         let candidate_path = root.join(format!("{name}.{candidate_file_suffix}"));
-        if timed_stat(timing, || candidate_path.exists()) {
+        if timed_stat(timing, || dir_cache.file_exists(&candidate_path)) {
             let result = FindResult::single_file(candidate_path.clone(), candidate_file_suffix);
             if let Some(filter) = style_filter {
                 if let Some(style) = result.style()
@@ -390,7 +400,7 @@ fn find_one_part_in_root(
     // Check if `name` corresponds to a compiled module.
     for candidate_compiled_suffix in COMPILED_FILE_SUFFIXES {
         let candidate_path = root.join(format!("{name}.{candidate_compiled_suffix}"));
-        if timed_stat(timing, || candidate_path.exists()) {
+        if timed_stat(timing, || dir_cache.file_exists(&candidate_path)) {
             let result = FindResult::CompiledModule(candidate_path);
             if let Some(filter) = style_filter {
                 // compiled files are considered executable
