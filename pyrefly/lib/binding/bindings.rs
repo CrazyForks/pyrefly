@@ -1687,18 +1687,24 @@ impl<'a> BindingsBuilder<'a> {
         if let Some(prev_idx) = prev_idx
             && let Some(Binding::Import(prev)) = self.idx_to_binding(prev_idx)
         {
-            // A duplicate import of the same symbol is not a reassignment;
-            // skip the cross-module `is_final` lookup in that case so that
-            // repeated `from X import Y` blocks (common in
-            // `if TYPE_CHECKING:` and method-local imports) don't force
-            // `Step::Exports` on the import target.
+            // Fast path: exact duplicate import needs no cross-module lookup.
+            // This avoids forcing `Step::Exports` for repeated `from X import Y`
+            // blocks common in `if TYPE_CHECKING:` and method-local imports.
             if let Some(Binding::Import(cur)) = self.idx_to_binding(idx)
                 && cur.module == prev.module
                 && cur.name == prev.name
             {
                 return;
             }
-            if self.lookup.export_origin(prev.module, &prev.name).is_final {
+            let prev_origin = self.lookup.export_origin(prev.module, &prev.name);
+            if prev_origin.is_final {
+                // Both are imports but from different modules.
+                // Compare origins to check if they trace back to the same definition.
+                if let Some(Binding::Import(cur)) = self.idx_to_binding(idx)
+                    && self.lookup.export_origin(cur.module, &cur.name).origin == prev_origin.origin
+                {
+                    return;
+                }
                 self.error(
                     self.idx_to_key(idx).range(),
                     ErrorInfo::Kind(ErrorKind::BadAssignment),

@@ -1193,6 +1193,51 @@ from foo import X as Y
 "#,
 );
 
+fn env_type_checking_reexport() -> TestEnv {
+    TestEnv::one(
+        "a",
+        r#"
+from typing import TYPE_CHECKING
+"#,
+    )
+}
+
+testcase!(
+    test_star_import_type_checking,
+    env_type_checking_reexport(),
+    r#"
+from typing import TYPE_CHECKING
+from a import *
+"#,
+);
+
+fn env_final_cross_module() -> TestEnv {
+    let mut t = TestEnv::new();
+    t.add(
+        "a",
+        r#"
+from typing import Final
+X: Final = 42
+"#,
+    );
+    t.add(
+        "b",
+        r#"
+X: int = 10
+"#,
+    );
+    t
+}
+
+testcase!(
+    test_import_final_then_import_different_value,
+    env_final_cross_module(),
+    r#"
+from a import X
+from b import X  # E: Cannot assign to `X` because it is imported as final
+"#,
+);
+
 fn env_all_binop_add() -> TestEnv {
     let mut t = TestEnv::new();
     t.add(
