@@ -21,7 +21,7 @@ Requires: pip install lzstring
 import argparse
 import json
 import sys
-from urllib.parse import parse_qs, unquote, urlencode, urlparse
+from urllib.parse import unquote, urlencode, urlparse
 
 
 def _get_lzstring():
@@ -91,8 +91,10 @@ def decode_pyrefly_link(url: str) -> dict:
         decompressed = decompress_from_encoded_uri(decoded)
         return json.loads(decompressed) if decompressed else {}
     elif "code=" in raw_query:
-        params = parse_qs(parsed.query)
-        decompressed = decompress_from_encoded_uri(params["code"][0])
+        idx = raw_query.index("code=") + len("code=")
+        amp_idx = raw_query.find("&", idx)
+        raw_code = raw_query[idx:] if amp_idx == -1 else raw_query[idx:amp_idx]
+        decompressed = decompress_from_encoded_uri(unquote(raw_code))
         if decompressed is None:
             return {}
         return {"files": {"sandbox.py": decompressed}, "activeFile": "sandbox.py"}
