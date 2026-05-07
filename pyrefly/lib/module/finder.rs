@@ -326,6 +326,7 @@ fn find_one_part_in_root(
     root: &Path,
     style_filter: Option<ModuleStyle>,
     phantom_paths: &mut Option<&mut Vec<PathBuf>>,
+    _dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> Option<FindResult> {
     let candidate_dir = root.join(name.as_str());
@@ -453,6 +454,7 @@ fn find_one_part<'a>(
     mut roots: impl Iterator<Item = &'a PathBuf>,
     style_filter: Option<ModuleStyle>,
     phantom_paths: &mut Option<&mut Vec<PathBuf>>,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> Option<(FindResult, Vec<PathBuf>)> {
     // skip looking in `__pycache__`, since those modules are not accessible
@@ -463,7 +465,7 @@ fn find_one_part<'a>(
     let mut acc: Option<NamespaceAccumulator> = None;
 
     while let Some(root) = roots.next() {
-        match find_one_part_in_root(name, root, style_filter, phantom_paths, timing) {
+        match find_one_part_in_root(name, root, style_filter, phantom_paths, dir_cache, timing) {
             None => (),
             Some(FindResult::ImplicitNamespacePackage(pkg)) => {
                 let namespace_dir = pkg.into_vec().remove(0);
@@ -529,6 +531,7 @@ fn find_one_part<'a>(
 fn find_one_part_prefix<'a>(
     prefix: &Name,
     roots: impl Iterator<Item = &'a PathBuf>,
+    _dir_cache: &DirEntryCache,
 ) -> Vec<(FindResult, ModuleName)> {
     let mut results = Vec::new();
     let mut namespace_roots: SmallMap<ModuleName, Vec<PathBuf>> = SmallMap::new();
@@ -618,6 +621,7 @@ fn continue_find_module(
     components_rest: &[Name],
     style_filter: Option<ModuleStyle>,
     phantom_paths: &mut Option<&mut Vec<PathBuf>>,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> Option<FindResult> {
     let mut current_result = Some(start_result);
@@ -641,6 +645,7 @@ fn continue_find_module(
                     iter::once(&next_root),
                     style_filter,
                     phantom_paths,
+                    dir_cache,
                     timing,
                 )
                 .map(|x| x.0);
@@ -649,9 +654,15 @@ fn continue_find_module(
             // roots. Cross-root best_result selection happens inside find_one_part.
             Some(FindResult::LegacyNamespacePackage(_, next_roots))
             | Some(FindResult::ImplicitNamespacePackage(next_roots)) => {
-                current_result =
-                    find_one_part(part, next_roots.iter(), style_filter, phantom_paths, timing)
-                        .map(|x| x.0);
+                current_result = find_one_part(
+                    part,
+                    next_roots.iter(),
+                    style_filter,
+                    phantom_paths,
+                    dir_cache,
+                    timing,
+                )
+                .map(|x| x.0);
             }
         }
     }
@@ -674,19 +685,27 @@ fn find_module_components<'a, I>(
     include: I,
     style_filter: Option<ModuleStyle>,
     phantom_paths: &mut Option<&mut Vec<PathBuf>>,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> Option<FindResult>
 where
     I: Iterator<Item = &'a PathBuf> + Clone,
 {
-    let (first_component_result, fallback_search) =
-        find_one_part(first, include.clone(), style_filter, phantom_paths, timing)?;
+    let (first_component_result, fallback_search) = find_one_part(
+        first,
+        include.clone(),
+        style_filter,
+        phantom_paths,
+        dir_cache,
+        timing,
+    )?;
 
     let current_result = continue_find_module(
         first_component_result,
         components_rest,
         style_filter,
         phantom_paths,
+        dir_cache,
         timing,
     )?;
 
@@ -698,7 +717,17 @@ where
             fallback_search
                 .into_iter()
                 .filter_map(|s| {
-                    Some(find_one_part(first, [s].iter(), style_filter, &mut None, timing)?.0)
+                    Some(
+                        find_one_part(
+                            first,
+                            [s].iter(),
+                            style_filter,
+                            &mut None,
+                            dir_cache,
+                            timing,
+                        )?
+                        .0,
+                    )
                 })
                 .filter_map(|first| {
                     continue_find_module(
@@ -706,6 +735,7 @@ where
                         components_rest,
                         style_filter,
                         &mut None,
+                        dir_cache,
                         timing,
                     )
                 })
@@ -837,6 +867,7 @@ fn find_module<'a, I>(
     typeshed_third_party_stub: Option<FindingOrError<ModulePath>>,
     from_real_config_file: bool,
     phantom_paths: &mut Option<&mut Vec<PathBuf>>,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> Option<FindingOrError<ModulePath>>
 where
@@ -853,6 +884,7 @@ where
                 include.clone(),
                 style_filter,
                 phantom_paths,
+                dir_cache,
                 timing,
             );
 
@@ -863,6 +895,7 @@ where
                 include.clone(),
                 style_filter,
                 phantom_paths,
+                dir_cache,
                 timing,
             );
 
@@ -886,14 +919,16 @@ fn find_module_prefixes<'a>(
     prefix: ModuleName,
     include: impl Iterator<Item = &'a PathBuf>,
 ) -> Vec<ModuleName> {
+    let dir_cache = DirEntryCache::new(false);
     let components = prefix.components();
     let first = &components[0];
     let rest = &components[1..];
     let mut results = Vec::new();
     if rest.is_empty() {
-        results = find_one_part_prefix(first, include)
+        results = find_one_part_prefix(first, include, &dir_cache)
     } else {
-        let mut current_result = find_one_part(first, include, None, &mut None, None).map(|x| x.0);
+        let mut current_result =
+            find_one_part(first, include, None, &mut None, &dir_cache, None).map(|x| x.0);
         for (i, part) in rest.iter().enumerate() {
             let is_last = i == rest.len() - 1;
             match current_result {
@@ -909,23 +944,35 @@ fn find_module_prefixes<'a>(
                 }
                 Some(FindResult::RegularPackage(_, next_root)) => {
                     if is_last {
-                        results = find_one_part_prefix(part, iter::once(&next_root));
+                        results = find_one_part_prefix(part, iter::once(&next_root), &dir_cache);
                         break;
                     } else {
-                        current_result =
-                            find_one_part(part, iter::once(&next_root), None, &mut None, None)
-                                .map(|x| x.0);
+                        current_result = find_one_part(
+                            part,
+                            iter::once(&next_root),
+                            None,
+                            &mut None,
+                            &dir_cache,
+                            None,
+                        )
+                        .map(|x| x.0);
                     }
                 }
                 Some(FindResult::LegacyNamespacePackage(_, next_roots))
                 | Some(FindResult::ImplicitNamespacePackage(next_roots)) => {
                     if is_last {
-                        results = find_one_part_prefix(part, next_roots.iter());
+                        results = find_one_part_prefix(part, next_roots.iter(), &dir_cache);
                         break;
                     } else {
-                        current_result =
-                            find_one_part(part, next_roots.iter(), None, &mut None, None)
-                                .map(|x| x.0);
+                        current_result = find_one_part(
+                            part,
+                            next_roots.iter(),
+                            None,
+                            &mut None,
+                            &dir_cache,
+                            None,
+                        )
+                        .map(|x| x.0);
                     }
                 }
             }
@@ -1069,6 +1116,7 @@ pub fn find_import_internal(
     origin: Option<&ModulePath>,
     style_filter: Option<ModuleStyle>,
     phantom_paths: &mut Option<&mut Vec<PathBuf>>,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> FindingOrError<ModulePath> {
     let mut namespaces_found = vec![];
@@ -1088,6 +1136,7 @@ pub fn find_import_internal(
             None,
             false,
             phantom_paths,
+            dir_cache,
             timing,
         )
     {
@@ -1104,6 +1153,7 @@ pub fn find_import_internal(
         None,
         false,
         phantom_paths,
+        dir_cache,
         timing,
     ) {
         path
@@ -1116,6 +1166,7 @@ pub fn find_import_internal(
             None,
             false,
             phantom_paths,
+            dir_cache,
             timing,
         )
     {
@@ -1143,6 +1194,7 @@ pub fn find_import_internal(
             None,
             false,
             phantom_paths,
+            dir_cache,
             timing,
         )
     {
@@ -1155,6 +1207,7 @@ pub fn find_import_internal(
         typeshed_third_party_stub.clone(),
         from_real_config_file,
         phantom_paths,
+        dir_cache,
         timing,
     ) {
         path
@@ -1195,9 +1248,18 @@ pub fn find_import(
     module: ModuleName,
     origin: Option<&ModulePath>,
     mut phantom_paths: Option<&mut Vec<PathBuf>>,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> FindingOrError<ModulePath> {
-    find_import_internal(config, module, origin, None, &mut phantom_paths, timing)
+    find_import_internal(
+        config,
+        module,
+        origin,
+        None,
+        &mut phantom_paths,
+        dir_cache,
+        timing,
+    )
 }
 
 pub fn find_import_filtered(
@@ -1205,9 +1267,18 @@ pub fn find_import_filtered(
     module: ModuleName,
     origin: Option<&ModulePath>,
     style_filter: Option<ModuleStyle>,
+    dir_cache: &DirEntryCache,
     timing: Option<&TransactionTimingCounters>,
 ) -> FindingOrError<ModulePath> {
-    find_import_internal(config, module, origin, style_filter, &mut None, timing)
+    find_import_internal(
+        config,
+        module,
+        origin,
+        style_filter,
+        &mut None,
+        dir_cache,
+        timing,
+    )
 }
 
 /// Find all legitimate imports that start with `module`
@@ -1315,6 +1386,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1329,6 +1401,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1343,6 +1416,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None,
@@ -1373,6 +1447,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1387,6 +1462,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1418,6 +1494,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1449,6 +1526,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1493,6 +1571,7 @@ mod tests {
                     None,
                     false,
                     &mut None,
+                    &DirEntryCache::new(true),
                     None,
                 ),
                 None
@@ -1517,6 +1596,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1539,6 +1619,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -1569,6 +1650,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1586,6 +1668,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1629,6 +1712,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1646,6 +1730,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1661,6 +1746,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -1699,6 +1785,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1716,6 +1803,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -1764,6 +1852,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1781,6 +1870,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1796,6 +1886,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1839,6 +1930,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1857,6 +1949,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1873,6 +1966,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -1922,6 +2016,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1939,6 +2034,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -1954,6 +2050,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2002,6 +2099,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2020,6 +2118,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2036,6 +2135,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2080,6 +2180,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2097,6 +2198,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2112,6 +2214,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2152,6 +2255,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2168,6 +2272,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -2210,6 +2315,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2226,6 +2332,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2270,6 +2377,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2286,6 +2394,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2333,6 +2442,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2351,6 +2461,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2367,6 +2478,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -2528,7 +2640,14 @@ mod tests {
         };
         config.configure();
         assert_eq!(
-            find_import_filtered(&config, ModuleName::from_str("a.c"), None, None, None),
+            find_import_filtered(
+                &config,
+                ModuleName::from_str("a.c"),
+                None,
+                None,
+                &DirEntryCache::new(true),
+                None
+            ),
             // We will find `a.c` because `a` is a namespace package whose search roots
             // include both `search_root0/a/` and `search_root1/a/`.
             FindingOrError::new_finding(ModulePath::filesystem(root.join("search_root1/a/c.py")))
@@ -2539,6 +2658,7 @@ mod tests {
                 ModuleName::from_str("spp_priority"),
                 None,
                 None,
+                &DirEntryCache::new(true),
                 None
             ),
             // We will find `spp_priority` in `site_package_path`, even though it's
@@ -2556,6 +2676,7 @@ mod tests {
                 ModuleName::from_str("spp_priority.d"),
                 None,
                 None,
+                &DirEntryCache::new(true),
                 None
             ),
             FindingOrError::new_finding(ModulePath::filesystem(
@@ -2568,6 +2689,7 @@ mod tests {
                 ModuleName::from_str("spp_priority.d"),
                 None,
                 Some(ModuleStyle::Interface),
+                &DirEntryCache::new(true),
                 None,
             ),
             // When applying a `ModuleStyle`, we don't find a result and force a find import
@@ -2617,7 +2739,14 @@ mod tests {
 
         // pyi preferred over py
         assert_eq!(
-            find_one_part(&Name::new("baz"), roots.iter(), None, &mut None, None),
+            find_one_part(
+                &Name::new("baz"),
+                roots.iter(),
+                None,
+                &mut None,
+                &DirEntryCache::new(true),
+                None
+            ),
             Some((
                 FindResult::SingleFilePyModule(root.join("foo/baz.py")),
                 vec![root.join("bar")]
@@ -2629,19 +2758,35 @@ mod tests {
                 &[],
                 None,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             Some(FindResult::SingleFilePyiModule(root.join("foo/baz.py")))
         );
         assert_eq!(
-            find_module_components(&Name::new("baz"), &[], roots.iter(), None, &mut None, None)
-                .unwrap(),
+            find_module_components(
+                &Name::new("baz"),
+                &[],
+                roots.iter(),
+                None,
+                &mut None,
+                &DirEntryCache::new(true),
+                None
+            )
+            .unwrap(),
             FindResult::SingleFilePyiModule(root.join("bar/baz.pyi")),
         );
 
         // py preferred over pyc
         assert_eq!(
-            find_one_part(&Name::new("compiled"), roots.iter(), None, &mut None, None),
+            find_one_part(
+                &Name::new("compiled"),
+                roots.iter(),
+                None,
+                &mut None,
+                &DirEntryCache::new(true),
+                None
+            ),
             Some((
                 FindResult::RegularPackage(
                     root.join("foo/compiled/__init__.py"),
@@ -2659,6 +2804,7 @@ mod tests {
                 &[Name::new("a")],
                 None,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2671,6 +2817,7 @@ mod tests {
                 roots.iter(),
                 None,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2711,6 +2858,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2727,6 +2875,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2741,6 +2890,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -2771,6 +2921,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2785,6 +2936,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2799,6 +2951,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -2835,6 +2988,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2849,6 +3003,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2863,6 +3018,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -2894,6 +3050,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2908,6 +3065,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2922,6 +3080,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -2961,6 +3120,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -2978,6 +3138,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3140,6 +3301,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -3154,6 +3316,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3170,6 +3333,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3192,6 +3356,7 @@ mod tests {
             None,
             false,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         );
         assert_eq!(
@@ -3207,6 +3372,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -3231,6 +3397,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3261,6 +3428,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3276,6 +3444,7 @@ mod tests {
             None,
             false,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         );
         assert_eq!(
@@ -3302,6 +3471,7 @@ mod tests {
             [root.to_path_buf()].iter(),
             None,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         )
         .unwrap()
@@ -3315,6 +3485,7 @@ mod tests {
             [root.to_path_buf()].iter(),
             None,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         )
         .unwrap()
@@ -3328,6 +3499,7 @@ mod tests {
             [root.to_path_buf()].iter(),
             None,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         )
         .unwrap()
@@ -3341,6 +3513,7 @@ mod tests {
             [root.to_path_buf()].iter(),
             None,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         )
         .unwrap()
@@ -3372,6 +3545,7 @@ mod tests {
             [root.to_path_buf()].iter(),
             None,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         )
         .unwrap();
@@ -3385,6 +3559,7 @@ mod tests {
             [root.to_path_buf()].iter(),
             None,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         )
         .unwrap();
@@ -3400,7 +3575,15 @@ mod tests {
             FindResult::RegularPackage(PathBuf::from("path/to/init.py"), PathBuf::from("path/to"));
         let components_rest = vec![Name::new("test_module")];
         assert!(
-            continue_find_module(start_result, &components_rest, None, &mut None, None).is_none()
+            continue_find_module(
+                start_result,
+                &components_rest,
+                None,
+                &mut None,
+                &DirEntryCache::new(true),
+                None
+            )
+            .is_none()
         );
     }
 
@@ -3414,12 +3597,21 @@ mod tests {
             [root.to_path_buf()].iter(),
             None,
             &mut None,
+            &DirEntryCache::new(true),
             None,
         )
         .unwrap()
         .0;
         assert!(matches!(
-            continue_find_module(start_result, &[], None, &mut None, None).unwrap(),
+            continue_find_module(
+                start_result,
+                &[],
+                None,
+                &mut None,
+                &DirEntryCache::new(true),
+                None
+            )
+            .unwrap(),
             FindResult::CompiledModule(_)
         ));
     }
@@ -3452,6 +3644,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3467,6 +3660,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3481,6 +3675,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3496,6 +3691,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3521,6 +3717,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3535,6 +3732,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3563,6 +3761,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3599,6 +3798,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3615,6 +3815,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3632,6 +3833,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             ),
             None
@@ -3645,6 +3847,7 @@ mod tests {
                 None,
                 false,
                 &mut None,
+                &DirEntryCache::new(true),
                 None,
             )
             .unwrap(),
@@ -3676,8 +3879,14 @@ mod tests {
         let config_root = std::env::current_dir().unwrap();
         config.rewrite_with_path_to_config(&config_root);
 
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("requests"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("requests"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
         assert!(
             matches!(result, FindingOrError::Finding(_)),
             "Expected to find 'requests' from typeshed third party stubs without a config file, but got: {:?}",
@@ -3693,8 +3902,14 @@ mod tests {
 
         assert!(config.from_real_config_file());
 
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("requests"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("requests"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
         assert!(
             matches!(
                 &result,
@@ -3712,8 +3927,14 @@ mod tests {
         config.rewrite_with_path_to_config(&config_root);
 
         assert!(!config.from_real_config_file());
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("requests"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("requests"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
         assert!(
             matches!(result, FindingOrError::Finding(_)),
             "Expected to find 'requests' from typeshed third party stubs with a marker config file, but got: {:?}",
@@ -3749,8 +3970,14 @@ mod tests {
     fn test_real_config_file_with_third_party_stub_returns_not_found() {
         let config = get_config(ConfigSource::File("".into()));
         assert!(config.from_real_config_file());
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("requests"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("requests"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
 
         // Should return NotFound error when using real config and typeshed third party stubs exist but package is not installed
         let error = result.error().expect("Expected error to be present");
@@ -3773,6 +4000,7 @@ mod tests {
             ModuleName::from_str("requests"),
             None,
             None,
+            &DirEntryCache::new(true),
             None,
         );
         assert!(
@@ -3787,6 +4015,7 @@ mod tests {
             ModuleName::from_str("requests"),
             None,
             None,
+            &DirEntryCache::new(true),
             None,
         );
         assert!(
@@ -3817,8 +4046,14 @@ mod tests {
         config.python_environment.site_package_path = Some(vec![root.join("site_packages")]);
         config.configure();
 
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("requests"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("requests"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
 
         if let FindingOrError::Finding(finding) = &result {
             let error = finding
@@ -3859,8 +4094,14 @@ mod tests {
         config.python_environment.site_package_path = Some(vec![root.join("site_packages")]);
         config.configure();
 
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("dateutil"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("dateutil"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
 
         if let FindingOrError::Finding(finding) = &result {
             let error = finding
@@ -3893,8 +4134,14 @@ mod tests {
         config.configure();
 
         // 'requests' exists in typeshed third party stubs but not in our site_packages
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("requests"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("requests"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
 
         let FindError::MissingSourceForStubs(module) = result.error().unwrap() else {
             panic!("Expected MissingSourceForStubs error");
@@ -3924,8 +4171,14 @@ mod tests {
         config.configure();
 
         // 'requests' exists in both typeshed third party stubs AND site_packages
-        let result =
-            find_import_filtered(&config, ModuleName::from_str("requests"), None, None, None);
+        let result = find_import_filtered(
+            &config,
+            ModuleName::from_str("requests"),
+            None,
+            None,
+            &DirEntryCache::new(true),
+            None,
+        );
 
         if let FindingOrError::Finding(finding) = result {
             assert!(matches!(
@@ -4053,6 +4306,7 @@ mod tests {
             ModuleName::from_str("nonexistent"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4108,6 +4362,7 @@ mod tests {
             ModuleName::from_str("mypackage"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4151,6 +4406,7 @@ mod tests {
             ModuleName::from_str("mypackage"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4191,6 +4447,7 @@ mod tests {
             ModuleName::from_str("mymodule"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4232,6 +4489,7 @@ mod tests {
             ModuleName::from_str("mymodule"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4275,6 +4533,7 @@ mod tests {
             ModuleName::from_str("mymodule"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4331,6 +4590,7 @@ mod tests {
             ModuleName::from_str("parent.child"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4389,6 +4649,7 @@ mod tests {
             ModuleName::from_str("mymodule"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4474,6 +4735,7 @@ mod tests {
             ModuleName::from_str("a.b.c.d"),
             None,
             Some(&mut phantom_paths),
+            &DirEntryCache::new(true),
             None,
         );
 
@@ -4676,5 +4938,50 @@ mod tests {
             phantom_paths,
             vec![root.join("a/b.cinc"), root.join("a.b.cinc")]
         );
+    }
+
+    #[test]
+    fn test_dir_entry_cache_basic() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::dir(
+                    "foo",
+                    vec![TestPath::file("bar.py"), TestPath::file("__init__.py")],
+                ),
+                TestPath::file("baz.py"),
+            ],
+        );
+
+        let cache = DirEntryCache::new(true);
+
+        assert!(cache.dir_exists(&root.join("foo")));
+        assert!(!cache.dir_exists(&root.join("nonexistent")));
+        assert!(cache.file_exists(&root.join("baz.py")));
+        assert!(!cache.file_exists(&root.join("missing.py")));
+        assert!(cache.file_exists(&root.join("foo").join("bar.py")));
+        assert!(cache.file_exists(&root.join("foo").join("__init__.py")));
+    }
+
+    #[test]
+    fn test_dir_entry_cache_reuses_listing() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![TestPath::dir(
+                "pkg",
+                vec![TestPath::file("a.py"), TestPath::file("b.py")],
+            )],
+        );
+
+        let cache = DirEntryCache::new(true);
+        let pkg = root.join("pkg");
+
+        assert!(cache.file_exists(&pkg.join("a.py")));
+        assert!(cache.file_exists(&pkg.join("b.py")));
+        assert!(!cache.file_exists(&pkg.join("c.py")));
     }
 }

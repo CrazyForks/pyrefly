@@ -45,6 +45,7 @@ use crate::config::base::UntypedDefBehavior;
 use crate::config::config::ConfigFile;
 use crate::config::finder::ConfigFinder;
 use crate::error::error::print_errors;
+use crate::module::finder::DirEntryCache;
 use crate::module::finder::find_import;
 use crate::state::errors::Errors;
 use crate::state::load::FileContents;
@@ -464,9 +465,16 @@ impl TestEnv {
             let name = ModuleName::from_str(module);
             Handle::new(
                 name,
-                find_import(&config_file, name, None, None, None)
-                    .finding()
-                    .unwrap(),
+                find_import(
+                    &config_file,
+                    name,
+                    None,
+                    None,
+                    &DirEntryCache::new(true),
+                    None,
+                )
+                .finding()
+                .unwrap(),
                 config.dupe(),
             )
         })
