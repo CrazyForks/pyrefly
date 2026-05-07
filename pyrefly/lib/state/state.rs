@@ -215,8 +215,8 @@ pub enum ModuleDep {
     IsReexport(Name),
     /// `LookupExport::get_deprecated`.
     GetDeprecated(Name),
-    /// `LookupExport::is_final`.
-    IsFinal(Name),
+    /// `LookupExport::export_origin`.
+    ExportOrigin(Name),
     /// `LookupExport::docstring_range`.
     DocstringRange(Name),
     /// `LookupExport::is_submodule_imported_implicitly`.
@@ -332,7 +332,7 @@ impl ModuleDeps {
             | ModuleDep::IsSpecialExport(name)
             | ModuleDep::IsReexport(name)
             | ModuleDep::GetDeprecated(name)
-            | ModuleDep::IsFinal(name)
+            | ModuleDep::ExportOrigin(name)
             | ModuleDep::DocstringRange(name)
             | ModuleDep::IsSubmoduleImportedImplicitly(name) => {
                 self.names.entry(name).or_default().metadata = true;
@@ -429,7 +429,7 @@ impl ModuleDep {
             ModuleDep::IsSpecialExport(_) => "is_special_export",
             ModuleDep::IsReexport(_) => "is_reexport",
             ModuleDep::GetDeprecated(_) => "get_deprecated",
-            ModuleDep::IsFinal(_) => "is_final",
+            ModuleDep::ExportOrigin(_) => "export_origin",
             ModuleDep::DocstringRange(_) => "docstring_range",
             ModuleDep::IsSubmoduleImportedImplicitly(_) => "is_submodule_imported_implicitly",
             ModuleDep::Wildcard => "get_wildcard",
@@ -2868,7 +2868,7 @@ impl<'a> LookupExport for TransactionHandle<'a> {
         )?
     }
 
-    fn is_final(&self, mut module: ModuleName, name: &Name) -> ExportOrigin {
+    fn export_origin(&self, mut module: ModuleName, name: &Name) -> ExportOrigin {
         let mut seen = HashSet::new();
         let mut name = name.clone();
 
@@ -2887,7 +2887,7 @@ impl<'a> LookupExport for TransactionHandle<'a> {
                         }
                         None => Err(false),
                     },
-                    ModuleDep::IsFinal(name.clone()),
+                    ModuleDep::ExportOrigin(name.clone()),
                 )
                 .unwrap_or(Err(false));
 

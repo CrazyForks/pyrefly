@@ -1698,7 +1698,7 @@ impl<'a> BindingsBuilder<'a> {
             {
                 return;
             }
-            if self.lookup.is_final(prev.module, &prev.name).is_final {
+            if self.lookup.export_origin(prev.module, &prev.name).is_final {
                 self.error(
                     self.idx_to_key(idx).range(),
                     ErrorInfo::Kind(ErrorKind::BadAssignment),

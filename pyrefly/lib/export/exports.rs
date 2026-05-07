@@ -64,8 +64,8 @@ pub trait LookupExport {
     /// Get the docstring range for an export. Records a dependency on `name` from `module` regardless of if it exists.
     fn docstring_range(&self, module: ModuleName, name: &Name) -> Option<TextRange>;
 
-    /// Check if an export is marked as `Final`. Records a dependency on `name` from `module` regardless of if it exists.
-    fn is_final(&self, module: ModuleName, name: &Name) -> ExportOrigin;
+    /// Get where an export originates. Records a dependency on `name` from `module` regardless of if it exists.
+    fn export_origin(&self, module: ModuleName, name: &Name) -> ExportOrigin;
 }
 
 /// Result of checking whether an export is `Final`, including the defining module and name
@@ -494,7 +494,7 @@ mod tests {
             false
         }
 
-        fn is_final(&self, module: ModuleName, name: &Name) -> ExportOrigin {
+        fn export_origin(&self, module: ModuleName, name: &Name) -> ExportOrigin {
             ExportOrigin {
                 origin: (module, name.clone()),
                 is_final: false,
