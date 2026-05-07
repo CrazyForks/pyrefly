@@ -21,6 +21,8 @@ use pyrefly_types::class::Class;
 use pyrefly_types::class::ClassType;
 use pyrefly_types::dimension::SizeExpr;
 use pyrefly_types::quantified::Quantified;
+use pyrefly_types::quantified::QuantifiedOrigin;
+use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::AnyStyle;
 use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::BoundMethodType;
@@ -1390,6 +1392,64 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
+    /// Returns a copy of `decoratee` with a leading `Self` receiver in its first positional
+    /// parameter replaced by its bound class type, or `None` if no such rewrite applies.
+    /// Decorators that accept the concrete class but not `Self` can then type-check against
+    /// the rewritten signature without weakening general callable subtyping.
+    fn decorator_compatible_decoratee_arg(&self, decoratee: &Type) -> Option<Type> {
+        let bound_receiver_type = |ty: &Type| match ty {
+            Type::SelfType(cls) => Some(self.heap.mk_class_type(cls.clone())),
+            Type::Quantified(q)
+                if q.identity().origin == QuantifiedOrigin::SyntheticSelf
+                    && let Restriction::Bound(bound) = q.restriction() =>
+            {
+                Some(bound.clone())
+            }
+            _ => None,
+        };
+
+        // `*args`/keyword-only/`**kwargs` can never be the `self` receiver, so don't try.
+        let normalize_first_param = |params: &Params| -> Option<Params> {
+            let Params::List(param_list) = params else {
+                return None;
+            };
+            let first = param_list.items().first()?;
+            let new_first = match first {
+                Param::PosOnly(name, ty, required) => {
+                    Param::PosOnly(name.clone(), bound_receiver_type(ty)?, required.clone())
+                }
+                Param::Pos(name, ty, required) => {
+                    Param::Pos(name.clone(), bound_receiver_type(ty)?, required.clone())
+                }
+                Param::Varargs(..) | Param::KwOnly(..) | Param::Kwargs(..) => return None,
+            };
+            let mut items = param_list.items().to_vec();
+            items[0] = new_first;
+            Some(Params::List(ParamList::new(items)))
+        };
+
+        match decoratee {
+            Type::Function(func) => {
+                let params = normalize_first_param(&func.signature.params)?;
+                Some(self.heap.mk_function(Function {
+                    signature: Callable {
+                        params,
+                        ret: func.signature.ret.clone(),
+                    },
+                    metadata: func.metadata.clone(),
+                }))
+            }
+            Type::Callable(callable) => {
+                let params = normalize_first_param(&callable.params)?;
+                Some(self.heap.mk_callable_from(Callable {
+                    params,
+                    ret: callable.ret.clone(),
+                }))
+            }
+            _ => None,
+        }
+    }
+
     fn decorate_returned_callable(
         &self,
         returned_ty: Type,
@@ -1542,16 +1602,37 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             return decoratee;
         }
         let application = self.prepare_decorator_application(decorator, decoratee, range, errors);
-        let raw_return = self.call_infer(
-            application.call_target.clone(),
-            &[CallArg::ty(&application.decoratee_arg, range)],
-            &[],
-            range,
-            errors,
-            None,
-            None,
-            None,
-        );
+        // Run a decorator call, buffering errors so we can decide between the primary
+        // and Self-rewritten fallback without double-reporting.
+        let try_call = |arg: &Type| {
+            let call_errors = ErrorCollector::new(errors.module().dupe(), errors.style());
+            let ret = self.call_infer(
+                application.call_target.clone(),
+                &[CallArg::ty(arg, range)],
+                &[],
+                range,
+                &call_errors,
+                None,
+                None,
+                None,
+            );
+            (ret, call_errors)
+        };
+        let (primary_return, primary_errors) = try_call(&application.decoratee_arg);
+        // Many decorators can't accept Self but are semantically valid on the method;
+        // retry with the receiver normalized to its bound class.
+        let raw_return = if primary_errors.is_empty() {
+            primary_return
+        } else if let Some(rewritten) =
+            self.decorator_compatible_decoratee_arg(&application.decoratee_arg)
+            && let (fallback_return, fallback_errors) = try_call(&rewritten)
+            && fallback_errors.is_empty()
+        {
+            fallback_return
+        } else {
+            errors.extend(primary_errors);
+            primary_return
+        };
         let decorated_value =
             self.decorate_returned_callable(raw_return, metadata, &application.original_decoratee);
         // Given the raw `decorated_value`, which may include `Type::Quantified` type variables

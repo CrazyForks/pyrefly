@@ -511,6 +511,94 @@ def test(c: Child) -> None:
 "#,
 );
 
+// A decorator whose parameter type is incompatible with Self (e.g. expects a concrete
+// Callable signature) should succeed via the fallback that replaces the Self receiver
+// with its bound class type.
+testcase!(
+    test_self_receiver_fallback_for_incompatible_decorator,
+    r#"
+from typing import Callable
+
+def concrete_deco(fn: Callable[[MyClass, int], str]) -> Callable[[MyClass, int], str]:
+    return fn
+
+class MyClass:
+    @concrete_deco
+    def method(self, x: int) -> str:
+        return ""
+
+def test(c: MyClass) -> None:
+    c.method(42)
+"#,
+);
+
+// When a decorator genuinely rejects the method's signature (even after replacing Self
+// with the bound class), the original type error must not be suppressed.
+testcase!(
+    test_self_receiver_fallback_does_not_mask_genuine_errors,
+    r#"
+from typing import Callable
+
+def strict_deco(fn: Callable[[int], str]) -> Callable[[int], str]:
+    return fn
+
+class MyClass:
+    @strict_deco  # E: is not assignable to parameter `fn`
+    def method(self, x: int) -> str:
+        return ""
+"#,
+);
+
+// Generic decorator applied via the Self-receiver fallback: the decorator's type
+// parameter must be inferred from the rewritten signature so the decorated method
+// preserves the method's return type.
+testcase!(
+    test_self_receiver_fallback_generic_decorator,
+    r#"
+from typing import Callable, assert_type
+
+def generic_deco[T](fn: Callable[[MyClass, int], T]) -> Callable[[MyClass, int], T]:
+    return fn
+
+class MyClass:
+    @generic_deco
+    def method(self, x: int) -> str:
+        return ""
+
+def test(c: MyClass) -> None:
+    assert_type(c.method(42), str)
+"#,
+);
+
+// Each variant of an overloaded method is decorated independently, so the fallback
+// applies per-variant and overload resolution still works after decoration.
+testcase!(
+    test_self_receiver_fallback_applies_per_overload_variant,
+    r#"
+from typing import Callable, assert_type, overload
+
+def concrete_int(fn: Callable[[MyClass, int], int]) -> Callable[[MyClass, int], int]:
+    return fn
+
+def concrete_str(fn: Callable[[MyClass, str], str]) -> Callable[[MyClass, str], str]:
+    return fn
+
+class MyClass:
+    @overload
+    @concrete_int
+    def method(self, x: int) -> int: ...
+    @overload
+    @concrete_str
+    def method(self, x: str) -> str: ...
+    def method(self, x):
+        return x
+
+def test(c: MyClass) -> None:
+    assert_type(c.method(1), int)
+    assert_type(c.method("x"), str)
+"#,
+);
+
 // Regression test for a previously unhandled crash when computing intersection
 // of SelfType and ClassType (after removing SelfType <: ClassType)
 testcase!(
