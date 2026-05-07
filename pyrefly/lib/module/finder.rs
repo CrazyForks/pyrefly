@@ -5,10 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::ffi::OsString;
+use std::fmt::Debug;
 use std::io::Read;
 use std::iter;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -134,6 +137,95 @@ fn timed_stat(timing: Option<&TransactionTimingCounters>, f: impl FnOnce() -> bo
             }
             result
         }
+    }
+}
+
+/// Cache of directory listings to avoid repeated stat() calls during module resolution.
+///
+/// Each directory is read at most once via readdir(). Subsequent lookups for files
+/// in that directory use the cached entry set. This is especially beneficial on
+/// FUSE/EdenFS where stat() calls have high latency.
+///
+/// Entries store the file type (is_dir) alongside the name. On Linux this comes
+/// from d_type in the dirent struct, so DirEntry::file_type() requires no extra
+/// stat call.
+///
+/// The cache lives inside `LoaderFindCache` and is never invalidated —
+/// file-change events cause `invalidate_find` to replace loaders in the state.
+pub struct DirEntryCache {
+    cache: LockedMap<PathBuf, Option<Arc<SmallMap<OsString, bool>>>>,
+    enabled: bool,
+}
+
+impl Debug for DirEntryCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DirEntryCache")
+            .field("enabled", &self.enabled)
+            .finish_non_exhaustive()
+    }
+}
+
+impl DirEntryCache {
+    pub fn new(enabled: bool) -> Self {
+        Self {
+            cache: LockedMap::new(),
+            enabled,
+        }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn file_exists(&self, path: &Path) -> bool {
+        if !self.enabled {
+            return path.exists();
+        }
+        match (path.parent(), path.file_name()) {
+            (Some(parent), Some(name)) => self
+                .get_entries(parent)
+                .is_some_and(|entries| matches!(entries.get(name), Some(false))),
+            _ => path.exists(),
+        }
+    }
+
+    pub fn dir_exists(&self, dir: &Path) -> bool {
+        if !self.enabled {
+            return dir.is_dir();
+        }
+        match (dir.parent(), dir.file_name()) {
+            (Some(parent), Some(name)) => {
+                if let Some(entries) = self.get_entries(parent) {
+                    return matches!(entries.get(name), Some(true));
+                }
+                self.get_entries(dir).is_some()
+            }
+            _ => self.get_entries(dir).is_some(),
+        }
+    }
+
+    fn get_entries(&self, dir: &Path) -> Option<Arc<SmallMap<OsString, bool>>> {
+        let key = dir.to_path_buf();
+        if let Some(cached) = self.cache.get(&key) {
+            return cached.clone();
+        }
+        let listing = Self::read_dir_entries(dir);
+        self.cache.insert(key.clone(), listing);
+        self.cache.get(&key).and_then(|v| v.clone())
+    }
+
+    fn read_dir_entries(dir: &Path) -> Option<Arc<SmallMap<OsString, bool>>> {
+        std::fs::read_dir(dir).ok().map(|entries| {
+            Arc::new(
+                entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| {
+                        let is_dir = e.file_type().is_ok_and(|ft| ft.is_dir());
+                        (e.file_name(), is_dir)
+                    })
+                    .collect(),
+            )
+        })
     }
 }
 
