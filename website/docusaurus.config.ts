@@ -16,6 +16,7 @@ import StylexPlugin from '@stylexjs/webpack-plugin';
 import PyodidePlugin from '@pyodide/webpack-plugin';
 import path from "path";
 import fs from "fs";
+import remarkSandboxPlugin from "./src/sandbox/remarkSandboxPlugin";
 
 const BasePath = 'en/docs';
 
@@ -412,6 +413,11 @@ const config: Config = {
                             'https://www.internalfb.com/code/fbsource/fbcode/pyrefly/website/',
                         external: 'https://github.com/facebook/pyrefly/edit/main/website/',
                     }),
+                    beforeDefaultRemarkPlugins: [
+                        [remarkSandboxPlugin, {
+                            sandboxExamplesDir: path.resolve(__dirname, 'sandbox-examples'),
+                        }],
+                    ],
                 },
                 staticDocsProject: 'Pyrefly',
                 theme: {
