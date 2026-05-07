@@ -2876,27 +2876,28 @@ impl<'a> LookupExport for TransactionHandle<'a> {
                 return false; // Cycle detected
             }
 
-            let next = self.with_exports(
-                module,
-                |exports, lookup| match exports.exports(lookup).get(&name) {
-                    Some(ExportLocation::ThisModule(Export { is_final, .. })) => Err(*is_final),
-                    Some(ExportLocation::OtherModule(other_module, original_name)) => {
-                        Ok((*other_module, original_name.clone()))
-                    }
-                    None => Err(false),
-                },
-                ModuleDep::IsFinal(name.clone()),
-            );
+            let next = self
+                .with_exports(
+                    module,
+                    |exports, lookup| match exports.exports(lookup).get(&name) {
+                        Some(ExportLocation::ThisModule(Export { is_final, .. })) => Err(*is_final),
+                        Some(ExportLocation::OtherModule(other_module, original_name)) => {
+                            Ok((*other_module, original_name.clone()))
+                        }
+                        None => Err(false),
+                    },
+                    ModuleDep::IsFinal(name.clone()),
+                )
+                .unwrap_or(Err(false));
 
             match next {
-                Some(Err(is_final)) => return is_final,
-                Some(Ok((other_module, original_name))) => {
+                Err(is_final) => return is_final,
+                Ok((other_module, original_name)) => {
                     if let Some(original_name) = original_name {
                         name = original_name;
                     }
                     module = other_module;
                 }
-                None => return false,
             }
         }
     }
