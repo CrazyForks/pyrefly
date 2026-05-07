@@ -10,7 +10,7 @@ use std::path::Path;
 use pyrefly_config::config::ConfigFile;
 use pyrefly_util::arc_id::ArcId;
 
-use crate::lsp::non_wasm::server::TypeErrorDisplayStatus;
+use crate::lsp::non_wasm::type_error_display_status::TypeErrorDisplayStatus;
 
 pub fn should_show_stdlib_error(
     config: &ArcId<ConfigFile>,
