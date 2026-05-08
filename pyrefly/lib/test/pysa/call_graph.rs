@@ -3581,6 +3581,30 @@ def fun(d: typing.Dict[str, int], e: typing.Dict[str, typing.Dict[str, int]]):
 );
 
 call_graph_testcase!(
+    test_dict_subscript_setitem_with_parenthesized_target,
+    TEST_MODULE_NAME,
+    r#"
+def fun(d: dict[str, int]):
+  (d[0]) = 1
+"#,
+    &|context: &ModuleContext| {
+        vec![(
+            "test.fun",
+            vec![(
+                // Pyre uses the start location of the target, the location should
+                // start at `d` (column 4), not `(` (column 3).
+                "3:4-3:13|artificial-call|subscript-set-item",
+                regular_call_callees(vec![
+                    create_call_target("builtins.dict.__setitem__", TargetType::Overrides)
+                        .with_implicit_receiver(ImplicitReceiver::TrueWithObjectReceiver)
+                        .with_receiver_class_for_test("builtins.dict", context),
+                ]),
+            )],
+        )]
+    }
+);
+
+call_graph_testcase!(
     test_dict_subscript_setitem_in_multi_assign,
     TEST_MODULE_NAME,
     r#"

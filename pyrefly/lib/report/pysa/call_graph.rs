@@ -3309,7 +3309,10 @@ impl<'a> CallGraphVisitor<'a> {
                     dunder::SETITEM,
                     Origin {
                         kind: OriginKind::SubscriptSetItem,
-                        location: self.pysa_location(assign.range()),
+                        location: self.pysa_location(TextRange::new(
+                            subscript.value.start(),
+                            assign.range().end(),
+                        )),
                     },
                 )
             }
@@ -3320,14 +3323,20 @@ impl<'a> CallGraphVisitor<'a> {
                         head: Box::new(OriginKind::SubscriptSetItem),
                         tail: Box::new(OriginKind::AugmentedAssignStatement),
                     },
-                    location: self.pysa_location(assign.range()),
+                    location: self.pysa_location(TextRange::new(
+                        subscript.value.start(),
+                        assign.range().end(),
+                    )),
                 },
             ),
             Some(Stmt::AnnAssign(assign)) if assign.target.range() == subscript_range => (
                 dunder::SETITEM,
                 Origin {
                     kind: OriginKind::SubscriptSetItem,
-                    location: self.pysa_location(assign.range()),
+                    location: self.pysa_location(TextRange::new(
+                        subscript.value.start(),
+                        assign.range().end(),
+                    )),
                 },
             ),
             Some(Stmt::For(stmt_for)) if stmt_for.target.range() == subscript_range => (
@@ -3338,7 +3347,7 @@ impl<'a> CallGraphVisitor<'a> {
                         tail: Box::new(OriginKind::ForAssign),
                     },
                     location: self.pysa_location(TextRange::new(
-                        stmt_for.target.start(),
+                        subscript.value.start(),
                         stmt_for.iter.end(),
                     )),
                 },
