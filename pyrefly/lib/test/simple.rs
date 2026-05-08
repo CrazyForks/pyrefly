@@ -1844,6 +1844,14 @@ from typing import TypeVar
 );
 
 testcase!(
+    test_crash_on_multi_target_named_tuple,
+    r#"
+from typing import NamedTuple
+a = b = NamedTuple("b", [("x", int)])
+"#,
+);
+
+testcase!(
     test_check_invalid_rhs,
     r#"
 def f(x): pass

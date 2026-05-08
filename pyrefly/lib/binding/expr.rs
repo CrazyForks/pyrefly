@@ -563,9 +563,15 @@ impl<'a> BindingsBuilder<'a> {
         }
     }
 
-    fn bind_inline_functional_named_tuple(&mut self, call: &mut ExprCall, kind: SpecialExport) {
+    /// Synthesize a NamedTuple class from a functional call like `NamedTuple("X", ...)`
+    /// and insert an anonymous `ClassDef` binding for it. Returns the binding index.
+    pub fn bind_inline_functional_named_tuple(
+        &mut self,
+        call: &mut ExprCall,
+        kind: SpecialExport,
+    ) -> Option<Idx<Key>> {
         let Some(Expr::StringLiteral(name)) = call.arguments.args.first() else {
-            return;
+            return None;
         };
         let class_name = Identifier::new(Name::new(name.value.to_str()), name.range());
         let parent = self.scopes.nesting_context();
@@ -594,10 +600,10 @@ impl<'a> BindingsBuilder<'a> {
             ),
             _ => unreachable!("caller only passes CollectionsNamedTuple or TypingNamedTuple"),
         };
-        self.insert_binding(
+        Some(self.insert_binding(
             Key::Anon(call.range),
             Binding::ClassDef(class_idx, Box::new([])),
-        );
+        ))
     }
 
     fn record_yield(&mut self, mut x: ExprYield) {

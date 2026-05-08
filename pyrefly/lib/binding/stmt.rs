@@ -185,6 +185,29 @@ impl<'a> BindingsBuilder<'a> {
         self.insert_binding_current(assigned, binding);
     }
 
+    /// Handle multi-target assignments like `a = b = NamedTuple("X", ...)`.
+    ///
+    /// Synthesizes the class once and binds each target to the result, avoiding
+    /// the conflict that would occur if `bind_targets_with_value` called
+    /// `ensure_expr` (which triggers inline NamedTuple synthesis at the same
+    /// `Key::Anon` range).
+    fn bind_multi_target_named_tuple(
+        &mut self,
+        targets: &mut [Expr],
+        call: &mut ExprCall,
+        kind: SpecialExport,
+    ) {
+        let Some(rhs_idx) = self.bind_inline_functional_named_tuple(call, kind) else {
+            return;
+        };
+        for target in targets.iter_mut() {
+            let range = target.range();
+            self.bind_target_no_expr(target, &|ann| {
+                Binding::MultiTargetAssign(ann, rhs_idx, range)
+            });
+        }
+    }
+
     fn assign_type_var(&mut self, name: &ExprName, call: &mut ExprCall) {
         // Type var declarations are static types only; skip them for first-usage type inference.
         let static_type_usage = &mut Usage::StaticTypeInformation;
@@ -667,6 +690,14 @@ impl<'a> BindingsBuilder<'a> {
                         x.value,
                         None,
                     );
+                } else if let Expr::Call(call) = &mut *x.value
+                    && matches!(call.arguments.args.first(), Some(Expr::StringLiteral(_)))
+                    && let Some(
+                        special @ (SpecialExport::TypingNamedTuple
+                        | SpecialExport::CollectionsNamedTuple),
+                    ) = self.as_special_export(&call.func)
+                {
+                    self.bind_multi_target_named_tuple(&mut x.targets, call, special);
                 } else {
                     self.bind_targets_with_value(&mut x.targets, &mut x.value);
                 }
