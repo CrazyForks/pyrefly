@@ -2426,6 +2426,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     );
                 }
             }
+            // TODO: implement implicit alias validation logic
+            BindingExpect::ImplicitAliasCheck { .. } => {}
         }
         Arc::new(EmptyAnswer)
     }

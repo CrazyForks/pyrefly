@@ -1002,6 +1002,9 @@ pub enum KeyExpect {
     UninitializedCheck(TextRange),
     /// Forward reference string literal in union type check.
     ForwardRefUnion(TextRange),
+    /// A name used in annotation position that may be an invalid implicit alias.
+    // TODO: wire up insertion from finalize_bound_name
+    ImplicitAliasCheck(TextRange),
 }
 
 impl Ranged for KeyExpect {
@@ -1017,7 +1020,8 @@ impl Ranged for KeyExpect {
             | KeyExpect::MatchCaseReachability(range)
             | KeyExpect::PrivateAttributeAccess(range)
             | KeyExpect::UninitializedCheck(range)
-            | KeyExpect::ForwardRefUnion(range) => *range,
+            | KeyExpect::ForwardRefUnion(range)
+            | KeyExpect::ImplicitAliasCheck(range) => *range,
         }
     }
 }
@@ -1036,6 +1040,7 @@ impl DisplayWith<ModuleInfo> for KeyExpect {
             KeyExpect::PrivateAttributeAccess(r) => ("PrivateAttributeAccess", r),
             KeyExpect::UninitializedCheck(r) => ("UninitializedCheck", r),
             KeyExpect::ForwardRefUnion(r) => ("ForwardRefUnion", r),
+            KeyExpect::ImplicitAliasCheck(r) => ("ImplicitAliasCheck", r),
         };
         write!(f, "KeyExpect::{}({})", name, ctx.display(range))
     }
@@ -1138,6 +1143,14 @@ pub enum BindingExpect {
         right_is_forward_ref: bool,
         /// The range for error reporting (covers the whole union expression).
         range: TextRange,
+    },
+    /// A local name used in annotation position whose definition has invalid
+    /// annotation syntax. The error is emitted at solve time after checking
+    /// semantic exemptions (TypeVar, functional TypedDict, etc.).
+    // TODO: wire up solve logic
+    ImplicitAliasCheck {
+        name_assign_idx: Idx<Key>,
+        problem: Box<str>,
     },
 }
 
@@ -1252,6 +1265,16 @@ impl DisplayWith<Bindings> for BindingExpect {
                     left_is_forward_ref,
                     right_is_forward_ref,
                     m.display(range)
+                )
+            }
+            Self::ImplicitAliasCheck {
+                name_assign_idx,
+                problem,
+            } => {
+                write!(
+                    f,
+                    "ImplicitAliasCheck({}, {problem})",
+                    ctx.display(*name_assign_idx),
                 )
             }
         }
