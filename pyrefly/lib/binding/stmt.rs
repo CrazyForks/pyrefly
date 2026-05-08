@@ -176,6 +176,9 @@ impl<'a> BindingsBuilder<'a> {
         name: &ExprName,
         make_binding: impl FnOnce(Option<Idx<KeyAnnotation>>) -> Binding,
     ) {
+        if Ast::is_synthesized_empty_name(name) {
+            return;
+        }
         let assigned = self.declare_current_idx(Key::Definition(ShortIdentifier::expr_name(name)));
         let ann = self.bind_current(&name.id, &assigned, FlowStyle::Other);
         let binding = make_binding(ann);

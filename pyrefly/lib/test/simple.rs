@@ -1836,6 +1836,14 @@ testcase!(
 );
 
 testcase!(
+    test_crash_on_decorator_assign,
+    r#"
+from typing import TypeVar
+@T=TypeVar()  # E: Expected newline, found `=`
+"#,
+);
+
+testcase!(
     test_check_invalid_rhs,
     r#"
 def f(x): pass
