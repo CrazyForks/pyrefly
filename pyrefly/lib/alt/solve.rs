@@ -596,60 +596,25 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     pub(crate) fn has_valid_annotation_syntax(&self, x: &Expr, errors: &ErrorCollector) -> bool {
-        // Note that this function only checks for correct syntax.
-        // Semantic validation (e.g. that `typing.Self` is used in a class
-        // context, or that a string evaluates to a proper type expression) is
-        // handled elsewhere.
-        // See https://typing.readthedocs.io/en/latest/spec/annotations.html#type-and-annotation-expressions
-        let problem = match x {
-            Expr::Name(..)
-            | Expr::BinOp(ExprBinOp {
-                op: ruff_python_ast::Operator::BitOr,
-                ..
-            })
-            | Expr::Named(..)
-            | Expr::StringLiteral(..)
-            | Expr::NoneLiteral(..)
-            | Expr::Attribute(..)
-            | Expr::Starred(..) => return true,
-            Expr::Subscript(s) => match *s.value {
-                Expr::Name(..)
-                | Expr::BinOp(ExprBinOp {
-                    op: ruff_python_ast::Operator::BitOr,
-                    ..
-                })
-                | Expr::Named(..)
-                | Expr::StringLiteral(..)
-                | Expr::NoneLiteral(..)
-                | Expr::Attribute(..) => return true,
-                _ => "Invalid subscript expression",
-            },
-            Expr::Call(..) => "Function call",
-            Expr::Lambda(..) => "Lambda definition",
-            Expr::List(..) => "List literal",
-            Expr::NumberLiteral(..) => "Number literal",
-            Expr::Tuple(..) => "Tuple literal",
-            Expr::Dict(..) => "Dict literal",
-            Expr::ListComp(..) => "List comprehension",
-            Expr::If(..) => "If expression",
-            Expr::BooleanLiteral(..) => "Bool literal",
-            Expr::BoolOp(..) => "Boolean operation",
-            Expr::FString(..) => "F-string",
-            Expr::TString(..) => "T-string",
-            Expr::UnaryOp(..) => "Unary operation",
-            Expr::BinOp(ExprBinOp { op, .. }) => &format!("Binary operation `{}`", op.as_str()),
-            // There are many Expr variants. Not all of them are likely to be used
-            // in annotations, even accidentally. We can add branches for specific
-            // expression constructs if desired.
-            _ => "Expression",
-        };
-        self.error(
-            errors,
-            x.range(),
-            ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
-            format!("{problem} cannot be used in annotations"),
-        );
-        false
+        if let Some(problem) = Ast::annotation_syntax_problem(x) {
+            let message = if let Expr::BinOp(ExprBinOp { op, .. }) = x {
+                format!(
+                    "Binary operation `{}` cannot be used in annotations",
+                    op.as_str()
+                )
+            } else {
+                format!("{problem} cannot be used in annotations")
+            };
+            self.error(
+                errors,
+                x.range(),
+                ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                message,
+            );
+            false
+        } else {
+            true
+        }
     }
 
     fn expr_annotation(
