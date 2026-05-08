@@ -197,9 +197,9 @@ impl Exports {
     ///   Recorded as a default NameDep (both flags false) — presence in the
     ///   names map denotes an existence change, which overlaps with any dep
     ///   on that name.
-    /// - Metadata: is_import status, implicitly_imported_submodules, deprecation,
-    ///   or special_exports changed for a name that exists in both. Sets the
-    ///   metadata flag.
+    /// - Metadata: is_import status, final_names, implicitly_imported_submodules,
+    ///   deprecation, or special_exports changed for a name that exists in both.
+    ///   Sets the metadata flag.
     /// - Wildcard set: the set of names exported via `from M import *` changed.
     ///   Sets the wildcard flag. Only checked if the old wildcard was previously
     ///   forced (meaning some rdep depends on it); if not, no rdep can be
@@ -219,6 +219,7 @@ impl Exports {
                 Some(other_def) => {
                     // Name exists in both. Check metadata.
                     if self_def.style.is_import() != other_def.style.is_import()
+                        || self_defs.final_names.get(name) != other_defs.final_names.get(name)
                         || self_defs.implicitly_imported_submodules.contains(name)
                             != other_defs.implicitly_imported_submodules.contains(name)
                         || self_defs.deprecated.get(name) != other_defs.deprecated.get(name)
@@ -603,5 +604,22 @@ _x = 2
         eq_wildcards(&b, &imports, &[]);
         assert!(!contains(&a, &imports, "magic"));
         assert!(contains(&b, &imports, "magic"));
+    }
+
+    #[test]
+    fn changed_exports_detects_finality_change() {
+        let old = mk_exports("x: Final = 1", ModuleStyle::Executable);
+        let new = mk_exports("x = 1", ModuleStyle::Executable);
+        let lookup = SmallMap::new();
+        let mut changed = ModuleChanges::default();
+        old.changed_exports(&new, &lookup, &mut changed);
+        assert!(
+            changed
+                .0
+                .names
+                .get(&Name::new("x"))
+                .is_some_and(|dep| dep.metadata),
+            "changing Final status should be detected as a metadata change"
+        );
     }
 }
