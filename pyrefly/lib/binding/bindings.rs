@@ -53,6 +53,7 @@ use vec1::vec1;
 use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingAnnotation;
+use crate::binding::binding::BindingExpect;
 use crate::binding::binding::BindingExport;
 use crate::binding::binding::BindingLegacyTypeParam;
 use crate::binding::binding::BranchInfo;
@@ -63,6 +64,7 @@ use crate::binding::binding::Key;
 use crate::binding::binding::KeyAnnotation;
 use crate::binding::binding::KeyClass;
 use crate::binding::binding::KeyDecoratedFunction;
+use crate::binding::binding::KeyExpect;
 use crate::binding::binding::KeyExport;
 use crate::binding::binding::KeyLegacyTypeParam;
 use crate::binding::binding::KeyTypeAlias;
@@ -1509,6 +1511,37 @@ impl<'a> BindingsBuilder<'a> {
                 Binding::Forward(default_idx)
             };
             self.insert_binding_idx(deferred.bound_name_idx, binding);
+        }
+
+        if matches!(deferred.usage, Usage::StaticTypeInformation) {
+            let range = self.idx_to_key(deferred.bound_name_idx).range();
+            self.maybe_insert_implicit_alias_check(range, deferred.lookup_result_idx);
+        }
+    }
+
+    /// Check whether a name used in annotation position resolves to a
+    /// NameAssign with invalid annotation syntax. If so, insert a
+    /// `KeyExpect::ImplicitAliasCheck` binding.
+    fn maybe_insert_implicit_alias_check(
+        &mut self,
+        bound_name_range: TextRange,
+        lookup_result_idx: Idx<Key>,
+    ) {
+        if let Some((idx, Some(Binding::NameAssign(na)))) =
+            self.get_original_binding(lookup_result_idx)
+        {
+            if na.annotation.is_some() || na.is_in_function_scope {
+                return;
+            }
+            if let Some(problem) = Ast::annotation_syntax_problem(&na.expr) {
+                self.insert_binding(
+                    KeyExpect::ImplicitAliasCheck(bound_name_range),
+                    BindingExpect::ImplicitAliasCheck {
+                        name_assign_idx: idx,
+                        problem: problem.into(),
+                    },
+                );
+            }
         }
     }
 
