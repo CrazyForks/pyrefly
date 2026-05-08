@@ -82,7 +82,7 @@ pub struct JemallocStats {
     pub allocated: Option<Bytes>,
 }
 
-#[cfg(not(all(fbcode_build, not(target_os = "windows"))))]
+#[cfg(any(not(fbcode_build), target_os = "windows"))]
 fn get_jemalloc_stats() -> JemallocStats {
     JemallocStats {
         active: None,
