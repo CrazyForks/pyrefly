@@ -1326,8 +1326,10 @@ impl<'a> BindingsBuilder<'a> {
     /// First-use detection happens later in `process_deferred_bound_names`
     /// when all phi nodes are populated.
     pub fn lookup_name(&mut self, name: Hashed<&Name>, usage: &mut Usage) -> NameLookupResult {
-        let may_prove_initialized =
-            !matches!(usage, Usage::StaticTypeInformation | Usage::TypeAliasRhs);
+        let may_prove_initialized = !matches!(
+            usage,
+            Usage::StaticTypeInformation { .. } | Usage::TypeAliasRhs
+        );
         let name_read_info = self.scopes.look_up_name_for_read(name, usage);
         match name_read_info {
             NameReadInfo::Flow { idx, initialized } => {
@@ -1478,7 +1480,7 @@ impl<'a> BindingsBuilder<'a> {
             // Determine side effects based on usage and first_use state.
             if matches!(
                 deferred.usage,
-                Usage::StaticTypeInformation | Usage::TypeAliasRhs
+                Usage::StaticTypeInformation { .. } | Usage::TypeAliasRhs
             ) {
                 self.mark_does_not_pin_if_first_use(def_idx);
             } else if !is_narrowing {
@@ -1513,7 +1515,12 @@ impl<'a> BindingsBuilder<'a> {
             self.insert_binding_idx(deferred.bound_name_idx, binding);
         }
 
-        if matches!(deferred.usage, Usage::StaticTypeInformation) {
+        if matches!(
+            deferred.usage,
+            Usage::StaticTypeInformation {
+                is_annotation: true
+            }
+        ) {
             let range = self.idx_to_key(deferred.bound_name_idx).range();
             self.maybe_insert_implicit_alias_check(range, deferred.lookup_result_idx);
         }
@@ -1527,7 +1534,7 @@ impl<'a> BindingsBuilder<'a> {
         bound_name_range: TextRange,
         lookup_result_idx: Idx<Key>,
     ) {
-        if let Some((idx, Some(Binding::NameAssign(na)))) =
+        if let Some((_, Some(Binding::NameAssign(na)))) =
             self.get_original_binding(lookup_result_idx)
         {
             if na.annotation.is_some() || na.is_in_function_scope {
@@ -1537,7 +1544,8 @@ impl<'a> BindingsBuilder<'a> {
                 self.insert_binding(
                     KeyExpect::ImplicitAliasCheck(bound_name_range),
                     BindingExpect::ImplicitAliasCheck {
-                        name_assign_idx: idx,
+                        name: na.name.clone(),
+                        expr: na.expr.clone(),
                         problem: problem.into(),
                     },
                 );
@@ -2083,7 +2091,9 @@ impl<'a> BindingsBuilder<'a> {
     ) -> TParamLookupResult {
         let name = id.as_identifier();
         // Legacy type parameter lookups are in static type contexts
-        let mut usage = Usage::StaticTypeInformation;
+        let mut usage = Usage::StaticTypeInformation {
+            is_annotation: false,
+        };
         self.lookup_name(Hashed::new(&name.id), &mut usage)
             .found()
             .map_or(TParamLookupResult::NotFound, |original_idx| {

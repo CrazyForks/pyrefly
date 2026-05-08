@@ -71,6 +71,7 @@ use crate::binding::binding::KeyVarianceCheck;
 use crate::binding::bindings::BindingsBuilder;
 use crate::binding::bindings::CurrentIdx;
 use crate::binding::bindings::LegacyTParamCollector;
+use crate::binding::expr::Usage;
 use crate::binding::pydantic::PydanticConfigDict;
 use crate::binding::scope::ClassIndices;
 use crate::binding::scope::FlowStyle;
@@ -305,7 +306,13 @@ impl<'a> BindingsBuilder<'a> {
                 }
                 _ => &mut none,
             };
-            self.ensure_type(&mut base, legacy);
+            self.ensure_type_with_usage(
+                &mut base,
+                legacy,
+                &mut Usage::StaticTypeInformation {
+                    is_annotation: false,
+                },
+            );
 
             let base_class = self.base_class_of(base.clone());
             // NOTE(grievejia): If any of the class base is a specialized generic class (e.g. `Foo[Bar]`), and if the tparam of the

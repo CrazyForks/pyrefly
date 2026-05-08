@@ -210,7 +210,9 @@ impl<'a> BindingsBuilder<'a> {
 
     fn assign_type_var(&mut self, name: &ExprName, call: &mut ExprCall) {
         // Type var declarations are static types only; skip them for first-usage type inference.
-        let static_type_usage = &mut Usage::StaticTypeInformation;
+        let static_type_usage = &mut Usage::StaticTypeInformation {
+            is_annotation: false,
+        };
         self.ensure_expr(&mut call.func, static_type_usage);
         let mut iargs = call.arguments.args.iter_mut();
         if let Some(expr) = iargs.next() {
@@ -241,7 +243,9 @@ impl<'a> BindingsBuilder<'a> {
 
     fn ensure_type_var_tuple_and_param_spec_args(&mut self, call: &mut ExprCall) {
         // Type var declarations are static types only; skip them for first-usage type inference.
-        let static_type_usage = &mut Usage::StaticTypeInformation;
+        let static_type_usage = &mut Usage::StaticTypeInformation {
+            is_annotation: false,
+        };
         self.ensure_expr(&mut call.func, static_type_usage);
         for arg in call.arguments.args.iter_mut() {
             self.ensure_expr(arg, static_type_usage);
@@ -285,7 +289,9 @@ impl<'a> BindingsBuilder<'a> {
         tparams_builder: &mut Option<LegacyTParamCollector>,
     ) {
         // Type var declarations are static types only; skip them for first-usage type inference.
-        let static_type_usage = &mut Usage::StaticTypeInformation;
+        let static_type_usage = &mut Usage::StaticTypeInformation {
+            is_annotation: false,
+        };
         self.ensure_expr(&mut call.func, static_type_usage);
         let mut iargs = call.arguments.args.iter_mut();
         // The first argument is the name
@@ -900,10 +906,20 @@ impl<'a> BindingsBuilder<'a> {
                         //
                         // We don't track first-usage in this context, since we won't analyze the usage anyway.
                         let mut e = illegal_target.clone();
-                        self.ensure_expr(&mut e, &mut Usage::StaticTypeInformation);
+                        self.ensure_expr(
+                            &mut e,
+                            &mut Usage::StaticTypeInformation {
+                                is_annotation: false,
+                            },
+                        );
                         // Even though the assignment target is invalid, we still need to analyze the RHS so errors
                         // (like invalid walrus targets) are reported.
-                        self.ensure_expr(&mut x.value, &mut Usage::StaticTypeInformation);
+                        self.ensure_expr(
+                            &mut x.value,
+                            &mut Usage::StaticTypeInformation {
+                                is_annotation: false,
+                            },
+                        );
                     }
                 }
             }

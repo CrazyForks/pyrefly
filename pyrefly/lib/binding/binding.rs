@@ -1003,7 +1003,6 @@ pub enum KeyExpect {
     /// Forward reference string literal in union type check.
     ForwardRefUnion(TextRange),
     /// A name used in annotation position that may be an invalid implicit alias.
-    // TODO: wire up insertion from finalize_bound_name
     ImplicitAliasCheck(TextRange),
 }
 
@@ -1147,9 +1146,9 @@ pub enum BindingExpect {
     /// A local name used in annotation position whose definition has invalid
     /// annotation syntax. The error is emitted at solve time after checking
     /// semantic exemptions (TypeVar, functional TypedDict, etc.).
-    // TODO: wire up solve logic
     ImplicitAliasCheck {
-        name_assign_idx: Idx<Key>,
+        name: Name,
+        expr: Box<Expr>,
         problem: Box<str>,
     },
 }
@@ -1267,15 +1266,8 @@ impl DisplayWith<Bindings> for BindingExpect {
                     m.display(range)
                 )
             }
-            Self::ImplicitAliasCheck {
-                name_assign_idx,
-                problem,
-            } => {
-                write!(
-                    f,
-                    "ImplicitAliasCheck({}, {problem})",
-                    ctx.display(*name_assign_idx),
-                )
+            Self::ImplicitAliasCheck { name, problem, .. } => {
+                write!(f, "ImplicitAliasCheck({name}, {problem})",)
             }
         }
     }

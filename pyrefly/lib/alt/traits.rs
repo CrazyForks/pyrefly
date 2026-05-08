@@ -185,10 +185,10 @@ impl<Ans: LookupAnswer> Solve<Ans> for KeyExpect {
     fn solve(
         answers: &AnswersSolver<Ans>,
         binding: &BindingExpect,
-        _range: TextRange,
+        range: TextRange,
         errors: &ErrorCollector,
     ) -> Arc<EmptyAnswer> {
-        answers.solve_expectation(binding, errors)
+        answers.solve_expectation(binding, range, errors)
     }
 
     fn promote_recursive(_heap: &TypeHeap, _: Var) -> Self::Answer {

@@ -704,6 +704,27 @@ class C4(Generic[int]):  # E: Expected a type variable, got `int`
     "#,
 );
 
+testcase!(
+    test_typevar_not_treated_as_bad_implicit_alias,
+    r#"
+from typing import Callable, ParamSpec, TypeVar, TypeVarTuple, assert_type
+
+T = TypeVar("T")
+P = ParamSpec("P")
+Ts = TypeVarTuple("Ts")
+
+def f(x: T) -> T:
+    assert_type(x, T)
+    return x
+
+def g(cb: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+    return cb(*args, **kwargs)
+
+def h(x: tuple[*Ts]) -> tuple[*Ts]:
+    return x
+    "#,
+);
+
 fn env_exported_type_var() -> TestEnv {
     TestEnv::one(
         "lib",

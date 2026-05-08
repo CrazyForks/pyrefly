@@ -2199,6 +2199,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     pub fn solve_expectation(
         &self,
         binding: &BindingExpect,
+        range: TextRange,
         errors: &ErrorCollector,
     ) -> Arc<EmptyAnswer> {
         match binding {
@@ -2391,8 +2392,39 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     );
                 }
             }
-            // TODO: implement implicit alias validation logic
-            BindingExpect::ImplicitAliasCheck { .. } => {}
+            BindingExpect::ImplicitAliasCheck {
+                name,
+                expr,
+                problem,
+            } => {
+                // A call expression is exempt if its result is a type-like
+                // value (TypeVar, class metatype) or its callable is a class
+                // constructor. Non-call expressions are never exempt.
+                let is_exempt = if let Expr::Call(call) = expr.as_ref() {
+                    let swallower = self.error_swallower();
+                    let result_ty = self.expr_infer(expr, &swallower);
+                    matches!(
+                        &result_ty,
+                        Type::TypeVar(_)
+                            | Type::ParamSpec(_)
+                            | Type::TypeVarTuple(_)
+                            | Type::Type(box Type::ClassType(_))
+                    ) || {
+                        let callable_ty = self.expr_infer(&call.func, &swallower);
+                        matches!(&callable_ty, Type::ClassDef(_))
+                    }
+                } else {
+                    false
+                };
+                if !is_exempt {
+                    self.error(
+                        errors,
+                        range,
+                        ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                        format!("`{name}` is not a valid type alias: {problem} cannot be used in annotations"),
+                    );
+                }
+            }
         }
         Arc::new(EmptyAnswer)
     }
