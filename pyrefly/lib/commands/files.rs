@@ -147,6 +147,26 @@ pub fn get_project_config_for_current_dir(
     Ok((config, config_finder.errors()))
 }
 
+pub fn get_config_finder_for_snippet(
+    config: Option<PathBuf>,
+    args: ConfigOverrideArgs,
+) -> anyhow::Result<ConfigFinder> {
+    let (config, errors) = match config {
+        Some(explicit) => get_explicit_config(&explicit, args),
+        None => {
+            let current_dir = std::env::current_dir().context("cannot identify current dir")?;
+            let finder = default_config_finder_with_overrides(args.clone(), false, None);
+            match finder.directory(&current_dir) {
+                Some(config) => (config, finder.errors()),
+                None => args.override_config(ConfigFile::default()),
+            }
+        }
+    };
+    let config_finder = ConfigFinder::new_constant(config);
+    add_config_errors(&config_finder, errors)?;
+    Ok(config_finder)
+}
+
 /// Get inputs for a full-project check. We will look for a config file and type-check the project it defines.
 ///
 /// Also returns the `UpsellDecision`: in project mode every checked

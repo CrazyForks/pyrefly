@@ -62,6 +62,7 @@ use tracing::info;
 use crate::commands::config_finder::ConfigConfigurerWrapper;
 use crate::commands::files::FilesArgs;
 use crate::commands::files::UpsellDecision;
+use crate::commands::files::get_config_finder_for_snippet;
 use crate::commands::util::CommandExitStatus;
 use crate::config::error_kind::Severity;
 use crate::config::finder::ConfigFinder;
@@ -219,11 +220,10 @@ pub struct SnippetCheckArgs {
 impl SnippetCheckArgs {
     pub async fn run(
         self,
-        wrapper: Option<ConfigConfigurerWrapper>,
         thread_count: ThreadCount,
     ) -> anyhow::Result<(CommandExitStatus, Option<CheckResult>)> {
-        let (_, config_finder, _) =
-            FilesArgs::get(vec![], self.config, self.config_override, wrapper)?;
+        let config_finder = get_config_finder_for_snippet(self.config, self.config_override)?;
+
         let check_args = CheckArgs {
             output: self.output,
             behavior: BehaviorArgs {
