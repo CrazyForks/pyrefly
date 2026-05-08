@@ -60,7 +60,7 @@ impl UnconfiguredOverride {
 /// `[tool.pyrefly]`.
 ///
 /// - Any `over` value other than `Auto` produces an empty `ConfigFile`
-///   with that preset and `synthesized_preset_reason = IdeOverride`. The
+///   with that preset and `synthesized_preset_reason = UserOverride`. The
 ///   user has explicitly chosen a behavior; we don't auto-detect.
 /// - `Auto` searches for a nearby mypy/pyright config and runs the
 ///   in-memory migration. The migrated result already carries the right
@@ -76,7 +76,7 @@ pub fn resolve_unconfigured_config(start: &Path, over: UnconfiguredOverride) -> 
         return ConfigFile {
             preset: Some(preset),
             project_includes: ConfigFile::default_project_includes(),
-            synthesized_preset_reason: Some(SynthesizedPresetReason::IdeOverride),
+            synthesized_preset_reason: Some(SynthesizedPresetReason::UserOverride),
             ..Default::default()
         };
     }
@@ -124,7 +124,7 @@ mod tests {
     fn test_explicit_override_skips_detection() -> anyhow::Result<()> {
         // Even though a mypy.ini is present, an explicit `Strict` override
         // wins and yields an empty config with that preset and the
-        // `IdeOverride` reason.
+        // `UserOverride` reason.
         let tmp = tempfile::tempdir()?;
         fs_anyhow::write(
             &tmp.path().join("mypy.ini"),
@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(cfg.preset, Some(Preset::Strict));
         assert_eq!(
             cfg.synthesized_preset_reason,
-            Some(SynthesizedPresetReason::IdeOverride)
+            Some(SynthesizedPresetReason::UserOverride)
         );
         // Explicit overrides skip migration — no mypy values present.
         assert_eq!(cfg.root.check_unannotated_defs, None);
@@ -153,7 +153,7 @@ mod tests {
         assert_eq!(cfg.preset, Some(Preset::Off));
         assert_eq!(
             cfg.synthesized_preset_reason,
-            Some(SynthesizedPresetReason::IdeOverride)
+            Some(SynthesizedPresetReason::UserOverride)
         );
         assert!(!cfg.project_includes.is_empty());
     }

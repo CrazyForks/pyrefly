@@ -79,3 +79,33 @@ ERROR * Cannot find type stubs for module `django` * (glob)
  INFO * revealed type: Module[django.forms] * (glob)
 [1]
 ```
+
+## The `--preset` flag sets the preset and suppresses the upsell
+
+```scrut {output_stream: stderr}
+$ PRESET_DIR=$(mktemp -d -p /tmp preset.XXXXXX) && \
+> echo "x: int = 'hello'" > $PRESET_DIR/foo.py && \
+> $PYREFLY check $PRESET_DIR/foo.py --preset off; rm -rf $PRESET_DIR
+ INFO 0 errors
+[0]
+```
+
+## The `--preset` flag overrides error mappings in the config file
+
+```scrut {output_stream: stdout}
+$ echo -e '[errors]\nbad-assignment = "ignore"' > $TMPDIR/pyrefly.toml && \
+> echo "x: int = 'hello'" > $TMPDIR/foo.py && \
+> $PYREFLY check $TMPDIR/foo.py --preset default --output-format=min-text
+ERROR * [bad-assignment] (glob)
+[1]
+```
+
+## CLI error flags override `--preset`
+
+```scrut {output_stream: stdout}
+$ touch $TMPDIR/pyrefly.toml && \
+> echo "x: int = 'hello'" > $TMPDIR/foo.py && \
+> $PYREFLY check $TMPDIR/foo.py --preset off --error bad-assignment --output-format=min-text
+ERROR * [bad-assignment] (glob)
+[1]
+```

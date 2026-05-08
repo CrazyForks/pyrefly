@@ -18,9 +18,11 @@ use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::display;
 
 use crate::base::InferReturnTypes;
+use crate::base::Preset;
 use crate::base::RecursionOverflowHandler;
 use crate::base::UntypedDefBehavior;
 use crate::config::ConfigFile;
+use crate::config::SynthesizedPresetReason;
 use crate::config::validate_path;
 use crate::error::ErrorDisplayConfig;
 use crate::error_kind::ErrorKind;
@@ -39,6 +41,10 @@ fn absolute_path_parser(s: &str) -> Result<PathBuf, String> {
 #[deny(clippy::missing_docs_in_private_items)]
 #[derive(Debug, Parser, Clone, Default)]
 pub struct ConfigOverrideArgs {
+    /// Named preset that provides default error severities and behavior settings.
+    #[arg(short, long)]
+    preset: Option<Preset>,
+
     /// Configures Pyrefly to replace `project-excludes` fully rather than
     /// append whatever is in your configuration or passed by CLI to Pyrefly's
     /// defaults.
@@ -286,6 +292,14 @@ impl ConfigOverrideArgs {
     }
 
     pub fn override_config(&self, mut config: ConfigFile) -> (ArcId<ConfigFile>, Vec<ConfigError>) {
+        if let Some(x) = self.preset {
+            config.preset = Some(x);
+            config.synthesized_preset_reason = Some(SynthesizedPresetReason::UserOverride);
+            config.root.errors = None;
+            for sub_config in config.sub_configs.iter_mut() {
+                sub_config.settings.errors = None;
+            }
+        }
         if let Some(x) = &self.python_platform {
             config.python_environment.python_platform = Some(x.clone());
         }

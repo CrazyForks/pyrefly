@@ -759,9 +759,9 @@ fn decide_upsell(
 /// `SynthesizedPresetReason`. Pure function of the reason — trivial to
 /// unit-test against a `Vec<u8>` without spinning up a real check run.
 ///
-/// `IdeOverride` is intentionally suppressed: it can only be produced by
-/// the LSP path, and even if it leaks in here we don't want to nag a user
-/// who has explicitly set `typeCheckingMode`.
+/// `UserOverride` is intentionally suppressed: the user chose the
+/// preset themselves (via `--preset` or the IDE `typeCheckingMode`
+/// setting), so nagging them to configure pyrefly would be noise.
 fn write_unconfigured_upsell<W: Write>(
     reason: SynthesizedPresetReason,
     out: &mut W,
@@ -794,9 +794,7 @@ fn write_unconfigured_upsell<W: Write>(
             writeln!(out, "Run `pyrefly init` to continue setting up Pyrefly.")?;
             writeln!(out, "Docs: {UPSELL_DOCS_URL}")?;
         }
-        // CLI never produces an IdeOverride; if one slips in (e.g.
-        // tests), suppress the upsell rather than emit confusing copy.
-        SynthesizedPresetReason::IdeOverride => {}
+        SynthesizedPresetReason::UserOverride => {}
     }
     Ok(())
 }
@@ -1539,13 +1537,11 @@ mod tests {
         assert!(s.contains("`pyrefly init`"), "{s}");
     }
 
-    /// `IdeOverride` is suppressed: the user explicitly chose a behavior
-    /// via the IDE setting, so we don't pester them with an upsell. This
-    /// also documents that the CLI never emits an `IdeOverride`-flavored
-    /// upsell even if one accidentally reaches this code path.
+    /// `UserOverride` is suppressed: the user explicitly chose a
+    /// preset via the IDE setting or `--preset` flag.
     #[test]
-    fn upsell_is_silent_for_ide_override() {
-        let s = upsell_string(SynthesizedPresetReason::IdeOverride);
+    fn upsell_is_silent_for_user_override() {
+        let s = upsell_string(SynthesizedPresetReason::UserOverride);
         assert!(s.is_empty(), "expected no upsell, got {s:?}");
     }
 }

@@ -107,9 +107,10 @@ pub enum SynthesizedPresetReason {
     /// section in `pyproject.toml`). Both axes affect the surfaced
     /// upsell wording.
     Migrated(MigratedFromKind),
-    /// The IDE workspace setting `typeCheckingMode` was set to a
-    /// specific preset, overriding any auto-detection.
-    IdeOverride,
+    /// The user explicitly chose a preset — either via the IDE
+    /// workspace setting `typeCheckingMode` or the `--preset` CLI
+    /// flag — overriding any auto-detection.
+    UserOverride,
 }
 
 /// Where did this config come from?
