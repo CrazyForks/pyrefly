@@ -614,9 +614,10 @@ pub struct ConfigFile {
 
     /// Runtime-only metadata. Populated by `resolve_unconfigured_config`
     /// when this `ConfigFile` was synthesized rather than loaded from a
-    /// `pyrefly.toml` / `[tool.pyrefly]` section. Used by the status bar
-    /// (LSP) and the upsell message (CLI) to explain to the user why
-    /// Pyrefly is behaving the way it is. Never serialized.
+    /// `pyrefly.toml` / `[tool.pyrefly]` section, and by the `--preset`
+    /// flag when a user specifies a preset on the command line. Used by
+    /// the status bar (LSP) and the upsell message (CLI) to explain to
+    /// the user why Pyrefly is behaving the way it is. Never serialized.
     #[serde(skip)]
     #[derivative(PartialEq = "ignore")]
     pub synthesized_preset_reason: Option<SynthesizedPresetReason>,
