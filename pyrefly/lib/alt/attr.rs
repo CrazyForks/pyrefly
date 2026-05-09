@@ -1406,7 +1406,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> LookupResult {
         let mut acc = LookupResult::empty();
         for base1 in base.0 {
-            self.lookup_attr_from_attribute_base1(base1, attr_name, &mut acc);
+            self.lookup_attr_static1(base1, attr_name, &mut acc);
         }
         acc
     }
@@ -1459,12 +1459,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .unwrap_or_else(fallback)
     }
 
-    fn lookup_attr_from_attribute_base1(
-        &self,
-        base: AttributeBase1,
-        attr_name: &Name,
-        acc: &mut LookupResult,
-    ) {
+    fn lookup_attr_static1(&self, base: AttributeBase1, attr_name: &Name, acc: &mut LookupResult) {
         match &base {
             AttributeBase1::Any(style) => acc.found_type(style.propagate(), base),
             AttributeBase1::TypeAny(style) => {
@@ -1612,7 +1607,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     (QuantifiedKind::ParamSpec, "kwargs") => {
                         acc.found_type(self.heap.mk_kwargs_value(quantified.clone()), base)
                     }
-                    _ => self.lookup_attr_from_attribute_base1(
+                    _ => self.lookup_attr_static1(
                         AttributeBase1::ClassInstance(quantified.class_type(self.stdlib).clone()),
                         attr_name,
                         acc,
@@ -1638,7 +1633,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // a default value for instance creation.
                     acc.not_found(NotFoundOn::ClassObject(class.class_object().dupe(), base))
                 } else {
-                    self.lookup_attr_from_attribute_base1((**protocol_base).clone(), attr_name, acc)
+                    self.lookup_attr_static1((**protocol_base).clone(), attr_name, acc)
                 }
             }
             AttributeBase1::BoundMethod(bound_func) => {
@@ -1647,14 +1642,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let found_len = acc.found.len();
                 let not_found_len = acc.not_found.len();
                 let error_len = acc.internal_error.len();
-                self.lookup_attr_from_attribute_base1(method_type_base, attr_name, acc);
+                self.lookup_attr_static1(method_type_base, attr_name, acc);
                 if acc.found.len() == found_len {
                     acc.not_found.truncate(not_found_len);
                     acc.internal_error.truncate(error_len);
                     let mut func_bases = Vec::new();
                     self.as_attribute_base1(bound_func.clone().as_type(), &mut func_bases);
                     for base1 in func_bases {
-                        self.lookup_attr_from_attribute_base1(base1, attr_name, acc);
+                        self.lookup_attr_static1(base1, attr_name, acc);
                     }
                 } else {
                     acc.not_found.truncate(not_found_len);
@@ -1735,7 +1730,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         if metadata.is_new_type() {
                             // NewType values are runtime Python objects (functions). They should behave like ordinary
                             // objects for attribute access even though they don't expose class-level APIs such as `mro`.
-                            self.lookup_attr_from_attribute_base1(
+                            self.lookup_attr_static1(
                                 AttributeBase1::ClassInstance(self.stdlib.object().clone()),
                                 attr_name,
                                 acc,
@@ -1751,7 +1746,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 None if metadata.has_base_any() => {
                                     // We can't immediately fall back to Any in this case -- `type[Any]` is actually a special
                                     // AttributeBase which requires additional lookup on `type` itself before the Any fallback.
-                                    self.lookup_attr_from_attribute_base1(
+                                    self.lookup_attr_static1(
                                         AttributeBase1::TypeAny(AnyStyle::Implicit),
                                         attr_name,
                                         acc,
@@ -1868,7 +1863,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         continue;
                     }
                     let mut acc_candidate = LookupResult::empty();
-                    self.lookup_attr_from_attribute_base1(b.clone(), attr_name, &mut acc_candidate);
+                    self.lookup_attr_static1(b.clone(), attr_name, &mut acc_candidate);
                     if acc_candidate.not_found.is_empty() && acc_candidate.internal_error.is_empty()
                     {
                         candidates.push(acc_candidate.found);
@@ -1879,7 +1874,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 } else {
                     // TODO: Intersect the candidates instead of using the fallback.
                     for b in fallback {
-                        self.lookup_attr_from_attribute_base1(b.clone(), attr_name, acc);
+                        self.lookup_attr_static1(b.clone(), attr_name, acc);
                     }
                 }
             }
@@ -1975,7 +1970,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     typed_dict.class_object().clone(),
                     base,
                 )),
-            _ => self.lookup_attr_from_attribute_base1(base, dunder_name, acc),
+            _ => self.lookup_attr_static1(base, dunder_name, acc),
         }
     }
 
