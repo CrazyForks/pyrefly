@@ -2123,7 +2123,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // Cycle detected - report as internal error
                     errors.internal_error(
                         range,
-                        vec1!["Type narrowing encountered a cycle in Type::Var".to_owned()],
+                        "Type narrowing encountered a cycle in Type::Var".to_owned(),
                     );
                     self.heap.mk_any_error()
                 }
@@ -4977,7 +4977,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 ),
                 Some(PinError::UnfinishedQuantified(q)) => errors.internal_error(
                     ty_range,
-                    vec1![format!("Unfinished Variable::Quantified: {q}")],
+                    format!("Unfinished Variable::Quantified: {q}"),
                 ),
                 None => {}
             }

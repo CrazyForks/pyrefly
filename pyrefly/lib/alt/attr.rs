@@ -429,7 +429,7 @@ impl InternalError {
                 attr_name
             ),
         };
-        errors.internal_error(range, vec1![msg]);
+        errors.internal_error(range, msg);
     }
 }
 

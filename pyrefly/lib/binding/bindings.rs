@@ -1099,7 +1099,8 @@ impl<'a> BindingsBuilder<'a> {
         match self.lookup.module_exists(builtins_module) {
             FindingOrError::Error(err @ FindError::MissingImport(..)) if !ignore_if_missing => {
                 let (_, msg) = err.display();
-                self.errors.internal_error(TextRange::default(), msg);
+                let (header, _) = msg.split_off_first();
+                self.errors.internal_error(TextRange::default(), header);
             }
             FindingOrError::Error(_) => (),
             FindingOrError::Finding(_) => {

@@ -189,20 +189,22 @@ impl ErrorCollector {
         self.errors.lock().push(err);
     }
 
-    pub fn internal_error(&self, range: TextRange, mut msg: Vec1<String>) {
-        msg.push(
-            "Sorry, Pyrefly encountered an internal error, this is always a bug in Pyrefly itself"
-                .to_owned(),
-        );
-        if cfg!(fbcode_build) {
-            msg.push("Please report the bug at https://fb.workplace.com/groups/pyreqa".to_owned());
-        } else {
-            msg.push(
-                "Please report the bug at https://github.com/facebook/pyrefly/issues/new"
+    pub fn internal_error(&self, range: TextRange, header: String) {
+        self.error_builder(range, ErrorKind::InternalError, header)
+            .with_detail(
+                "Sorry, Pyrefly encountered an internal error, \
+                 this is always a bug in Pyrefly itself"
                     .to_owned(),
-            );
-        }
-        self.add(range, ErrorInfo::Kind(ErrorKind::InternalError), msg);
+            )
+            .with_detail(
+                if cfg!(fbcode_build) {
+                    "Please report the bug at https://fb.workplace.com/groups/pyreqa"
+                } else {
+                    "Please report the bug at https://github.com/facebook/pyrefly/issues/new"
+                }
+                .to_owned(),
+            )
+            .emit();
     }
 
     pub fn module(&self) -> &ModuleInfo {
