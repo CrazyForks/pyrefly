@@ -2014,16 +2014,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.apply_getattr_fallback(attr_name, direct_lookup_result)
     }
 
-    // This function is intended as a low-level building block
-    // Unions or intersections should be handled by callers
-    fn lookup_attr(&self, base: &Type, attr_name: &Name) -> LookupResult {
-        if let Some(base) = self.as_attribute_base(base.clone()) {
-            self.lookup_attr_from_base(base, attr_name)
-        } else {
-            LookupResult::internal_error(InternalError::AttributeBaseUndefined(base.clone()))
-        }
-    }
-
     fn get_module_attr(&self, module: &ModuleType, attr_name: &Name) -> Option<Attribute> {
         // `module_name` could refer to a package, in which case we need to check if
         // `module_name.attr_name`:
@@ -2506,7 +2496,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         let fall_back_to_object = || self.heap.mk_class_type(self.stdlib.object().clone());
-        let (found, not_found, internal_errors) = self.lookup_attr(base, attr_name).decompose();
+        let lookup_result = if let Some(base) = self.as_attribute_base(base.clone()) {
+            self.lookup_attr_from_base(base, attr_name)
+        } else {
+            LookupResult::internal_error(InternalError::AttributeBaseUndefined(base.clone()))
+        };
+        let (found, not_found, internal_errors) = lookup_result.decompose();
         let mut results = Vec::new();
         for (attr, _) in found {
             let found_ty = match self.resolve_get_access(attr_name, attr, range, errors, None) {
