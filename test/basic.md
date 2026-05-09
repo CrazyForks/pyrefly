@@ -124,7 +124,7 @@ the upward search.
 $ UPSELL_PROJ=$(mktemp -d -p /tmp upsell.XXXXXX) && \
 > echo "x = 1" > $UPSELL_PROJ/a.py && \
 > cd $UPSELL_PROJ && $PYREFLY check; cd / && rm -rf $UPSELL_PROJ
- INFO Checking current directory with default configuration
+ INFO Checking current directory with auto configuration
  INFO 0 errors* (glob)
 No `pyrefly.toml` found — using preset `basic`.
 Run `pyrefly init` to continue setting up Pyrefly.
@@ -185,7 +185,7 @@ $ MYPY_PARENT=$(mktemp -d -p /tmp upsell.XXXXXX) && \
 ---STDOUT---
 ERROR */app/views/bar.py:1:* (glob)
 ---STDERR---
- INFO Found `*/mypy.ini` marking project root, checking root directory with default configuration (glob)
+ INFO Found `*/mypy.ini` marking project root, checking root directory with auto configuration (glob)
  INFO 1 error* (glob)
 No `pyrefly.toml` found — using settings imported from your `mypy.ini` (preset: legacy).
 Run `pyrefly init` to continue setting up Pyrefly.
