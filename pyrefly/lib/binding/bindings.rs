@@ -47,7 +47,6 @@ use ruff_text_size::TextSize;
 use starlark_map::Hashed;
 use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
-use vec1::Vec1;
 use vec1::vec1;
 
 use crate::binding::binding::AnnotationTarget;
@@ -1251,8 +1250,17 @@ impl<'a> BindingsBuilder<'a> {
         self.errors.error_builder(range, kind, msg).emit();
     }
 
-    pub fn error_multiline(&self, range: TextRange, info: ErrorInfo, msg: Vec1<String>) {
-        self.errors.add(range, info, msg);
+    pub fn error_with_detail(
+        &self,
+        range: TextRange,
+        kind: ErrorKind,
+        header: String,
+        detail: String,
+    ) {
+        self.errors
+            .error_builder(range, kind, header)
+            .with_detail(detail)
+            .emit();
     }
 
     pub fn declare_mutable_capture(&mut self, name: &Identifier, kind: MutableCaptureKind) {

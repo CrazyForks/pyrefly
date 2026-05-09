@@ -33,7 +33,6 @@ use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::Hashed;
-use vec1::vec1;
 
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingDecorator;
@@ -62,7 +61,6 @@ use crate::binding::scope::FlowStyle;
 use crate::binding::scope::Scope;
 use crate::binding::scope::is_constant_name;
 use crate::config::error_kind::ErrorKind;
-use crate::error::context::ErrorInfo;
 use crate::export::special::SpecialExport;
 use crate::types::callable::unexpected_keyword;
 use crate::types::types::AnyStyle;
@@ -404,11 +402,17 @@ impl<'a> BindingsBuilder<'a> {
                     )
                 } else {
                     // Record a type error and fall back to `Any`.
-                    let mut msg = vec1![format!("Could not find name `{name}`")];
+                    let header = format!("Could not find name `{name}`");
                     if let Some(suggestion) = suggestion {
-                        msg.push(format!("Did you mean `{suggestion}`?"));
+                        self.error_with_detail(
+                            name.range,
+                            ErrorKind::UnknownName,
+                            header,
+                            format!("Did you mean `{suggestion}`?"),
+                        );
+                    } else {
+                        self.error(name.range, ErrorKind::UnknownName, header);
                     }
-                    self.error_multiline(name.range, ErrorInfo::Kind(ErrorKind::UnknownName), msg);
                     self.insert_binding(key, Binding::Any(AnyStyle::Error))
                 }
             }
