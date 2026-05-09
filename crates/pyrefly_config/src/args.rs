@@ -41,7 +41,8 @@ fn absolute_path_parser(s: &str) -> Result<PathBuf, String> {
 #[deny(clippy::missing_docs_in_private_items)]
 #[derive(Debug, Parser, Clone, Default)]
 pub struct ConfigOverrideArgs {
-    /// Named preset that provides default error severities and behavior settings.
+    /// A named collection of error severities and behavior settings that serves as the base configuration.
+    /// Any explicit settings you specify override the preset.
     #[arg(short, long)]
     preset: Option<Preset>,
 
@@ -299,10 +300,6 @@ impl ConfigOverrideArgs {
         if let Some(x) = self.preset {
             config.preset = Some(x);
             config.synthesized_preset_reason = Some(SynthesizedPresetReason::UserOverride);
-            config.root.errors = None;
-            for sub_config in config.sub_configs.iter_mut() {
-                sub_config.settings.errors = None;
-            }
         }
         if let Some(x) = &self.python_platform {
             config.python_environment.python_platform = Some(x.clone());
