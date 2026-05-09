@@ -17,9 +17,11 @@ use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
 use vec1::Vec1;
+use vec1::vec1;
 
 use crate::config::error::ErrorConfig;
 use crate::config::error_kind::Severity;
+use crate::error::context::ErrorContext;
 use crate::error::context::ErrorInfo;
 use crate::error::error::Error;
 use crate::error::error::ErrorQuickFix;
@@ -129,6 +131,26 @@ impl ErrorCollector {
     pub fn extend(&self, other: ErrorCollector) {
         if self.style != ErrorStyle::Never {
             self.errors.lock().extend(other.errors.into_inner());
+        }
+    }
+
+    /// Start building an error. Returns a no-op builder if style is Never.
+    pub fn error_builder(
+        &self,
+        range: TextRange,
+        kind: ErrorKind,
+        header: String,
+    ) -> ErrorBuilder<'_> {
+        ErrorBuilder {
+            collector: self,
+            active: self.style != ErrorStyle::Never,
+            range,
+            kind,
+            header,
+            details: Vec::new(),
+            context: None,
+            annotations: Vec::new(),
+            quick_fixes: Vec::new(),
         }
     }
 
@@ -278,6 +300,90 @@ impl ErrorCollector {
         let mut result = CollectedErrors::default();
         self.collect_into(error_config, &[], &SmallMap::new(), &mut result);
         result
+    }
+}
+
+/// A builder for constructing and emitting errors incrementally.
+/// Chain decoration methods and call `.emit()` to push the error into the collector.
+#[must_use = "errors are not emitted until .emit() is called"]
+pub struct ErrorBuilder<'a> {
+    collector: &'a ErrorCollector,
+    active: bool,
+    range: TextRange,
+    kind: ErrorKind,
+    header: String,
+    details: Vec<String>,
+    context: Option<ErrorContext>,
+    annotations: Vec<(TextRange, String)>,
+    quick_fixes: Vec<ErrorQuickFix>,
+}
+
+impl ErrorBuilder<'_> {
+    /// Append a detail line (shown indented below the header).
+    pub fn with_detail(mut self, msg: String) -> Self {
+        if self.active {
+            self.details.push(msg);
+        }
+        self
+    }
+
+    /// Add a secondary labeled span.
+    pub fn with_annotation(mut self, range: TextRange, label: String) -> Self {
+        if self.active {
+            self.annotations.push((range, label));
+        }
+        self
+    }
+
+    /// Add a structured quick fix.
+    pub fn with_quick_fix(mut self, fix: ErrorQuickFix) -> Self {
+        if self.active {
+            self.quick_fixes.push(fix);
+        }
+        self
+    }
+
+    /// Set the ErrorContext. At emit time, the context's message becomes the header
+    /// (demoting the original header to first detail), its annotations are prepended,
+    /// and the ErrorKind is overridden. If called more than once, the last context wins.
+    /// `with_context(None)` clears the context.
+    pub fn with_context(mut self, ctx: Option<impl FnOnce() -> ErrorContext>) -> Self {
+        if self.active {
+            self.context = ctx.map(|ctx| ctx());
+        }
+        self
+    }
+
+    /// Emit the error into the collector.
+    pub fn emit(self) {
+        if !self.active {
+            return;
+        }
+        let (mut kind, mut header, mut details, mut annotations) =
+            (self.kind, self.header, self.details, self.annotations);
+        if let Some(ctx) = self.context {
+            kind = ctx.as_error_kind();
+            details.insert(0, header);
+            header = ctx.format();
+            let mut ctx_annotations = ctx.annotations();
+            ctx_annotations.extend(annotations);
+            annotations = ctx_annotations;
+        }
+        let msg = if details.is_empty() {
+            vec1![header]
+        } else {
+            let mut v = vec1![header];
+            v.extend(details);
+            v
+        };
+        let mut err = Error::new(self.collector.module_info.dupe(), self.range, msg, kind);
+        for (range, label) in annotations {
+            err = err.with_annotation(range, label);
+        }
+        for fix in self.quick_fixes {
+            err = err.with_quick_fix(fix);
+        }
+        self.collector.errors.lock().push(err);
     }
 }
 
