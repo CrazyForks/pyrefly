@@ -100,6 +100,17 @@ ERROR * [bad-assignment] (glob)
 [1]
 ```
 
+## `--preset` in a directory with mypy.ini should not inherit migrated values
+
+```scrut {output_stream: stdout}
+$ MYPY_DIR=$(mktemp -d -p /tmp mypy.XXXXXX) && \
+> echo -e "[mypy]\ncheck_untyped_defs = False" > $MYPY_DIR/mypy.ini && \
+> echo -e "def f():\n    x: int = 'hello'" > $MYPY_DIR/foo.py && \
+> $PYREFLY check $MYPY_DIR/foo.py --preset strict --output-format=min-text; rc=$?; rm -rf $MYPY_DIR; exit $rc
+ERROR * [bad-assignment] (glob)
+[1]
+```
+
 ## CLI error flags override `--preset`
 
 ```scrut {output_stream: stdout}

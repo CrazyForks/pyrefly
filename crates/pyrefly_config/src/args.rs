@@ -291,6 +291,10 @@ impl ConfigOverrideArgs {
         Ok(())
     }
 
+    pub fn preset(&self) -> Option<Preset> {
+        self.preset
+    }
+
     pub fn override_config(&self, mut config: ConfigFile) -> (ArcId<ConfigFile>, Vec<ConfigError>) {
         if let Some(x) = self.preset {
             config.preset = Some(x);
