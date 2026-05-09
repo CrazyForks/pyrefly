@@ -585,7 +585,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let attr_base = self.as_attribute_base(base.clone());
         let lookup_result = attr_base.clone().map_or_else(
             || LookupResult::internal_error(InternalError::AttributeBaseUndefined(base.clone())),
-            |attr_base| self.lookup_attr_from_base(attr_base, attr_name),
+            |attr_base| self.lookup_attr(attr_base, attr_name),
         );
         let mut types = Vec::new();
         let mut error_messages = Vec::new();
@@ -728,7 +728,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Can the attribute be successfully looked up in all cases?
     pub fn has_attr(&self, base: &Type, attr_name: &Name) -> bool {
         if let Some(attr_base) = self.as_attribute_base(base.clone()) {
-            let lookup_result = self.lookup_attr_from_base(attr_base, attr_name);
+            let lookup_result = self.lookup_attr(attr_base, attr_name);
             return lookup_result.internal_error.is_empty() && lookup_result.not_found.is_empty();
         }
         false
@@ -757,7 +757,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Option<Type> {
         let attr_base = self.as_attribute_base(base.clone())?;
-        let lookup_result = self.lookup_attr_from_base(attr_base, attr_name);
+        let lookup_result = self.lookup_attr(attr_base, attr_name);
         if lookup_result.internal_error.is_empty() && lookup_result.not_found.is_empty() {
             return None;
         }
@@ -983,9 +983,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .add_to(errors, range, attr_name, todo_ctx);
             return None;
         };
-        let (lookup_found, lookup_not_found, lookup_error) = self
-            .lookup_attr_from_base(attr_base.clone(), attr_name)
-            .decompose();
+        let (lookup_found, lookup_not_found, lookup_error) =
+            self.lookup_attr(attr_base.clone(), attr_name).decompose();
         for e in lookup_error {
             e.add_to(errors, range, attr_name, todo_ctx);
             should_narrow = false;
@@ -1238,9 +1237,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .add_to(errors, range, attr_name, todo_ctx);
             return;
         };
-        let (lookup_found, lookup_not_found, lookup_error) = self
-            .lookup_attr_from_base(attr_base.clone(), attr_name)
-            .decompose();
+        let (lookup_found, lookup_not_found, lookup_error) =
+            self.lookup_attr(attr_base.clone(), attr_name).decompose();
         for not_found in lookup_not_found {
             self.check_delattr(
                 attr_base.clone(),
@@ -1300,7 +1298,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         .0
                         .mapped(|base| AttributeBase1::ProtocolSubset(Box::new(base))),
                 );
-                self.lookup_attr_from_base(got_base, attr_name)
+                self.lookup_attr(got_base, attr_name)
             })
             .and_then(|lookup_result| {
                 if lookup_result.not_found.is_empty() && lookup_result.internal_error.is_empty() {
@@ -2009,7 +2007,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         result
     }
 
-    fn lookup_attr_from_base(&self, base: AttributeBase, attr_name: &Name) -> LookupResult {
+    fn lookup_attr(&self, base: AttributeBase, attr_name: &Name) -> LookupResult {
         let direct_lookup_result = self.lookup_attr_static(base.clone(), attr_name);
         self.apply_getattr_fallback(attr_name, direct_lookup_result)
     }
@@ -2497,7 +2495,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         let fall_back_to_object = || self.heap.mk_class_type(self.stdlib.object().clone());
         let lookup_result = if let Some(base) = self.as_attribute_base(base.clone()) {
-            self.lookup_attr_from_base(base, attr_name)
+            self.lookup_attr(base, attr_name)
         } else {
             LookupResult::internal_error(InternalError::AttributeBaseUndefined(base.clone()))
         };
