@@ -2531,7 +2531,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // No defining class to restrict access to — the attribute is only
         // reachable via dynamic fallback (__getattr__/__getattribute__), so
         // name mangling is irrelevant.
-        if !self.has_attr_without_dynamic_fallback(&value_type, &expect.attr.id) {
+        if !self.has_static_attr(&value_type, &expect.attr.id) {
             return;
         }
         self.error(
