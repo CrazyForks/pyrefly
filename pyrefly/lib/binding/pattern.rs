@@ -39,7 +39,6 @@ use crate::binding::narrow::NarrowingSubject;
 use crate::binding::narrow::expr_to_subjects;
 use crate::binding::scope::FlowStyle;
 use crate::config::error_kind::ErrorKind;
-use crate::error::context::ErrorInfo;
 use crate::export::special::SpecialExport;
 use crate::types::facet::UnresolvedFacetKind;
 
@@ -471,7 +470,7 @@ impl<'a> BindingsBuilder<'a> {
                     if pattern.is_irrefutable() && idx != n_subpatterns - 1 {
                         self.error(
                             pattern.range(),
-                            ErrorInfo::Kind(ErrorKind::BadMatch),
+                            ErrorKind::BadMatch,
                             "Only the last subpattern in MatchOr may be irrefutable".to_owned(),
                         )
                     }

@@ -610,7 +610,7 @@ impl Bindings {
         for (range, name) in exports.invalid_dunder_all_entries(lookup) {
             builder.error(
                 range,
-                ErrorInfo::Kind(ErrorKind::BadDunderAll),
+                ErrorKind::BadDunderAll,
                 format!("Name `{name}` is listed in `__all__` but is not defined in the module"),
             );
             let key = builder.insert_binding(
@@ -624,7 +624,7 @@ impl Bindings {
         if let Some(range) = exports.unresolvable_dunder_all_range() {
             builder.error(
                 range,
-                ErrorInfo::Kind(ErrorKind::UnresolvableDunderAll),
+                ErrorKind::UnresolvableDunderAll,
                 "`__all__` could not be statically analyzed; falling back to module-level definitions for star imports".to_owned(),
             );
         }
@@ -1247,8 +1247,8 @@ impl<'a> BindingsBuilder<'a> {
         None
     }
 
-    pub fn error(&self, range: TextRange, info: ErrorInfo, msg: String) {
-        self.errors.add(range, info, vec1![msg]);
+    pub fn error(&self, range: TextRange, kind: ErrorKind, msg: String) {
+        self.errors.error_builder(range, kind, msg).emit();
     }
 
     pub fn error_multiline(&self, range: TextRange, info: ErrorInfo, msg: Vec1<String>) {
@@ -1268,11 +1268,7 @@ impl<'a> BindingsBuilder<'a> {
                     && self.scopes.in_module_or_class_top_level()
                     && !self.scopes.in_class_body();
                 if !should_suppress {
-                    self.error(
-                        name.range,
-                        ErrorInfo::Kind(ErrorKind::UnknownName),
-                        error.message(name),
-                    );
+                    self.error(name.range, ErrorKind::UnknownName, error.message(name));
                 }
                 Binding::Any(AnyStyle::Error)
             }
@@ -1708,7 +1704,7 @@ impl<'a> BindingsBuilder<'a> {
             ) {
                 self.error(
                     self.idx_to_key(idx).range(),
-                    ErrorInfo::Kind(ErrorKind::Redefinition),
+                    ErrorKind::Redefinition,
                     format!("Cannot redefine existing type alias `{name}`",),
                 )
             } else if matches!(
@@ -1717,7 +1713,7 @@ impl<'a> BindingsBuilder<'a> {
             ) {
                 self.error(
                     self.idx_to_key(idx).range(),
-                    ErrorInfo::Kind(ErrorKind::Redefinition),
+                    ErrorKind::Redefinition,
                     format!("Cannot redefine existing name `{name}` as a type alias",),
                 );
             }
@@ -1749,7 +1745,7 @@ impl<'a> BindingsBuilder<'a> {
                 }
                 self.error(
                     self.idx_to_key(idx).range(),
-                    ErrorInfo::Kind(ErrorKind::BadAssignment),
+                    ErrorKind::BadAssignment,
                     format!("Cannot assign to `{name}` because it is imported as final"),
                 );
             }
@@ -1777,7 +1773,7 @@ impl<'a> BindingsBuilder<'a> {
             {
                 self.error(
                     name.range,
-                    ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                    ErrorKind::InvalidTypeVar,
                     format!(
                         "Type parameter `{}` shadows a type parameter of the same name from an enclosing scope",
                         name.id

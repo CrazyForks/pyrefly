@@ -367,11 +367,7 @@ impl<'a> BindingsBuilder<'a> {
                             },
                         );
                     } else if let Some(error_message) = is_initialized.as_error_message(&name.id) {
-                        self.error(
-                            name.range,
-                            ErrorInfo::Kind(ErrorKind::UnboundName),
-                            error_message,
-                        );
+                        self.error(name.range, ErrorKind::UnboundName, error_message);
                     }
                 }
 
@@ -392,7 +388,7 @@ impl<'a> BindingsBuilder<'a> {
                 if is_special_name(name.id.as_str()) {
                     self.error(
                         name.range,
-                        ErrorInfo::Kind(ErrorKind::UnimportedDirective),
+                        ErrorKind::UnimportedDirective,
                         format!(
                             "`{}` must be imported from `typing` for runtime usage",
                             name
@@ -437,7 +433,7 @@ impl<'a> BindingsBuilder<'a> {
                 if comp.is_async && !is_generator && !self.scopes.is_in_async_def() {
                     self.error(
                         range,
-                        ErrorInfo::Kind(ErrorKind::InvalidSyntax),
+                        ErrorKind::InvalidSyntax,
                         "`async` can only be used inside an async function".to_owned(),
                     );
                 }
@@ -836,13 +832,7 @@ impl<'a> BindingsBuilder<'a> {
                         for kw in call.arguments.keywords.iter_mut() {
                             self.ensure_expr(&mut kw.value, usage);
                             unexpected_keyword(
-                                &|msg| {
-                                    self.error(
-                                        call_range,
-                                        ErrorInfo::Kind(ErrorKind::UnexpectedKeyword),
-                                        msg,
-                                    )
-                                },
+                                &|msg| self.error(call_range, ErrorKind::UnexpectedKeyword, msg),
                                 "super",
                                 kw,
                             );
@@ -856,7 +846,7 @@ impl<'a> BindingsBuilder<'a> {
                                 None => {
                                     self.error(
                                         call_range,
-                                        ErrorInfo::Kind(ErrorKind::InvalidSuperCall),
+                                        ErrorKind::InvalidSuperCall,
                                         "`super` call with no arguments is valid only inside a method"
                                             .to_owned(),
                                     );
@@ -881,7 +871,7 @@ impl<'a> BindingsBuilder<'a> {
                                 // This is a very niche use case, and we don't support it aside from not erroring.
                                 self.error(
                                     call_range,
-                                    ErrorInfo::Kind(ErrorKind::InvalidSuperCall),
+                                    ErrorKind::InvalidSuperCall,
                                     format!("`super` takes at most 2 arguments, got {nargs}"),
                                 );
                             }
@@ -1000,7 +990,7 @@ impl<'a> BindingsBuilder<'a> {
                 {
                     self.error(
                         x.range(),
-                        ErrorInfo::Kind(ErrorKind::InvalidSyntax),
+                        ErrorKind::InvalidSyntax,
                         "`await` can only be used inside an async function".to_owned(),
                     );
                 }
@@ -1166,7 +1156,7 @@ impl<'a> BindingsBuilder<'a> {
                 if self.scopes.in_type_alias() {
                     self.error(
                         named.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidSyntax),
+                        ErrorKind::InvalidSyntax,
                         "Named expression cannot be used within a type alias".to_owned(),
                     );
                 }
