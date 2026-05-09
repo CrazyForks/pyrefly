@@ -725,7 +725,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         )
     }
 
-    /// Can the attribute be successfully looked up in all cases?
+    /// Can the attribute be successfully looked up on all union branches?
+    /// Uses the full lookup pipeline (static + `__getattr__`/`__getattribute__` fallback).
     pub fn has_attr(&self, base: &Type, attr_name: &Name) -> bool {
         if let Some(attr_base) = self.as_attribute_base(base.clone()) {
             let lookup_result = self.lookup_attr(attr_base, attr_name);
@@ -1398,6 +1399,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }),
         }
     }
+    /// Look up an attribute using only class field declarations, iterating over all union
+    /// branches. Does not fall back to `__getattr__`/`__getattribute__`.
     fn lookup_attr_static(&self, base: AttributeBase, attr_name: &Name) -> LookupResult {
         let mut acc = LookupResult::empty();
         for base1 in base.0 {
@@ -1454,6 +1457,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .unwrap_or_else(fallback)
     }
 
+    /// Look up an attribute on a single `AttributeBase1` using only class field declarations.
+    /// Does not fall back to `__getattr__`/`__getattribute__`.
     fn lookup_attr_static1(&self, base: AttributeBase1, attr_name: &Name, acc: &mut LookupResult) {
         match &base {
             AttributeBase1::Any(style) => acc.found_type(style.propagate(), base),
@@ -2008,6 +2013,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         result
     }
 
+    /// The standard full attribute lookup: static class field lookup followed by
+    /// `__getattr__`/`__getattribute__` fallback for any not-found branches.
     fn lookup_attr(&self, base: AttributeBase, attr_name: &Name) -> LookupResult {
         let direct_lookup_result = self.lookup_attr_static(base.clone(), attr_name);
         self.apply_getattr_fallback(attr_name, direct_lookup_result)
