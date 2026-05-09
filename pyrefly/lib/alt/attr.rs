@@ -803,7 +803,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Some(base) => {
                 let direct_lookup_result = self.lookup_magic_dunder_attr(base.clone(), attr_name);
                 if allow_getattr_fallback {
-                    self.lookup_attr_from_base_getattr_fallback(attr_name, direct_lookup_result)
+                    self.apply_getattr_fallback(attr_name, direct_lookup_result)
                 } else {
                     direct_lookup_result
                 }
@@ -1970,11 +1970,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    fn lookup_attr_from_base_getattr_fallback(
-        &self,
-        attr_name: &Name,
-        mut result: LookupResult,
-    ) -> LookupResult {
+    fn apply_getattr_fallback(&self, attr_name: &Name, mut result: LookupResult) -> LookupResult {
         let direct_lookup_not_found = std::mem::take(&mut result.not_found);
         for not_found in direct_lookup_not_found {
             let (getattr_found, getattr_not_found, getattr_internal_error) = self
@@ -2015,7 +2011,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     fn lookup_attr_from_base(&self, base: AttributeBase, attr_name: &Name) -> LookupResult {
         let direct_lookup_result = self.lookup_attr_static(base.clone(), attr_name);
-        self.lookup_attr_from_base_getattr_fallback(attr_name, direct_lookup_result)
+        self.apply_getattr_fallback(attr_name, direct_lookup_result)
     }
 
     // This function is intended as a low-level building block
