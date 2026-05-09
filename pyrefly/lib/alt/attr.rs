@@ -737,7 +737,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Does any union branch have the attribute without `__getattr__`/`__getattribute__` fallback?
     pub fn has_attr_without_dynamic_fallback(&self, base: &Type, attr_name: &Name) -> bool {
         if let Some(attr_base) = self.as_attribute_base(base.clone()) {
-            let lookup_result = self.lookup_attr_from_attribute_base(attr_base, attr_name);
+            let lookup_result = self.lookup_attr_static(attr_base, attr_name);
             return lookup_result.internal_error.is_empty() && !lookup_result.found.is_empty();
         }
         false
@@ -1399,11 +1399,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }),
         }
     }
-    fn lookup_attr_from_attribute_base(
-        &self,
-        base: AttributeBase,
-        attr_name: &Name,
-    ) -> LookupResult {
+    fn lookup_attr_static(&self, base: AttributeBase, attr_name: &Name) -> LookupResult {
         let mut acc = LookupResult::empty();
         for base1 in base.0 {
             self.lookup_attr_static1(base1, attr_name, &mut acc);
@@ -2018,7 +2014,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     fn lookup_attr_from_base(&self, base: AttributeBase, attr_name: &Name) -> LookupResult {
-        let direct_lookup_result = self.lookup_attr_from_attribute_base(base.clone(), attr_name);
+        let direct_lookup_result = self.lookup_attr_static(base.clone(), attr_name);
         self.lookup_attr_from_base_getattr_fallback(attr_name, direct_lookup_result)
     }
 
@@ -2762,9 +2758,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
         if include_types {
             for info in res {
-                let found_attrs = self
-                    .lookup_attr_from_attribute_base(base.clone(), &info.name)
-                    .found;
+                let found_attrs = self.lookup_attr_static(base.clone(), &info.name).found;
                 let mut is_deprecated = false;
                 let found_types: Vec<_> = found_attrs
                     .into_iter()
