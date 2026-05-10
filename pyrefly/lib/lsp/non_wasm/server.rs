@@ -2519,6 +2519,15 @@ impl Server {
             initialize_params.initialization_options.as_ref(),
         );
 
+        let dir_cache_enabled = initialize_params
+            .initialization_options
+            .as_ref()
+            .and_then(|opts| opts.get("pyrefly"))
+            .and_then(|pyrefly| pyrefly.get("experiments"))
+            .and_then(|exp| exp.get("dirEntryCache"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         let should_request_workspace_settings = initialize_params
             .capabilities
             .workspace
@@ -2536,7 +2545,7 @@ impl Server {
             indexing_mode,
             workspace_indexing_limit,
             build_system_blocking,
-            state: State::new(config_finder, thread_count),
+            state: State::new_with_options(config_finder, thread_count, dir_cache_enabled),
             open_notebook_cells: RwLock::new(HashMap::new()),
             open_files: RwLock::new(HashMap::new()),
             published_workspace_diagnostics: Mutex::new(HashMap::new()),
@@ -2596,6 +2605,10 @@ impl Server {
     }
 
     pub fn telemetry_state(&self) -> TelemetryServerState {
+        let mut active_experiments = Vec::new();
+        if self.state.dir_cache_enabled() {
+            active_experiments.push("dir_entry_cache".to_owned());
+        }
         TelemetryServerState {
             has_sourcedb: self.workspaces.sourcedb_available(),
             id: self.id,
@@ -2603,6 +2616,7 @@ impl Server {
             server_start_time: self.server_start_time,
             agent_session_id: self.agent_session_id.clone(),
             agent_invocation_id: self.agent_invocation_id.clone(),
+            active_experiments,
         }
     }
 
