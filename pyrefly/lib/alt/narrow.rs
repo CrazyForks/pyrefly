@@ -1974,6 +1974,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     *narrow_range,
                     &ignore_errors,
                 );
+                // No sub-facet check needed: the narrowed type already represents
+                // the facet's type directly, so `is_never()` below is sufficient.
                 (
                     self.get_facet_chain_type(&narrowed, &resolved_chain, *case_range),
                     false,
@@ -1993,37 +1995,49 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         );
     }
 
+    /// Check whether we can reliably determine reachability for this op.
+    ///
+    /// Returns `true` only when we understand all sub-ops AND at least one
+    /// constrains a value or class tightly enough to produce `Never`
+    /// (a "trigger", e.g. `Eq`, `Is`, or faceted `IsInstance`).
+    ///
+    /// Structural ops like `IsSequence`/`LenEq` are checkable but aren't
+    /// triggers on their own. Top-level `IsInstance` (no facet) is excluded
+    /// because class patterns can involve `__match_args__` and structural
+    /// subtyping, making disjointness unreliable without deeper analysis.
     fn is_match_case_reachability_op(op: &NarrowOp) -> bool {
-        let (can_check, has_trigger) = Self::classify_match_case_reachability_op(op);
-        can_check && has_trigger
-    }
-
-    fn classify_match_case_reachability_op(op: &NarrowOp) -> (bool, bool) {
-        match op {
-            NarrowOp::Atomic(_, AtomicNarrowOp::Eq(_) | AtomicNarrowOp::Is(_)) => (true, true),
-            NarrowOp::Atomic(Some(_), AtomicNarrowOp::IsInstance(_, NarrowSource::Pattern)) => {
-                (true, true)
-            }
-            NarrowOp::Atomic(
-                _,
-                AtomicNarrowOp::IsSequence
-                | AtomicNarrowOp::IsMapping
-                | AtomicNarrowOp::LenEq(_)
-                | AtomicNarrowOp::LenGte(_),
-            ) => (true, false),
-            NarrowOp::And(ops) | NarrowOp::Or(ops) => {
-                let mut has_trigger = false;
-                for op in ops {
-                    let (can_check, op_has_trigger) = Self::classify_match_case_reachability_op(op);
-                    if !can_check {
-                        return (false, false);
-                    }
-                    has_trigger |= op_has_trigger;
+        // Classifies as (can_check, has_trigger). The two dimensions can't be
+        // collapsed into a single bool because And/Or need to distinguish
+        // "structural but checkable" from "unknown and uncheckable" in sub-ops.
+        fn classify(op: &NarrowOp) -> (bool, bool) {
+            match op {
+                NarrowOp::Atomic(_, AtomicNarrowOp::Eq(_) | AtomicNarrowOp::Is(_)) => (true, true),
+                NarrowOp::Atomic(Some(_), AtomicNarrowOp::IsInstance(_, NarrowSource::Pattern)) => {
+                    (true, true)
                 }
-                (true, has_trigger)
+                NarrowOp::Atomic(
+                    _,
+                    AtomicNarrowOp::IsSequence
+                    | AtomicNarrowOp::IsMapping
+                    | AtomicNarrowOp::LenEq(_)
+                    | AtomicNarrowOp::LenGte(_),
+                ) => (true, false),
+                NarrowOp::And(ops) | NarrowOp::Or(ops) => {
+                    let mut has_trigger = false;
+                    for op in ops {
+                        let (can_check, op_has_trigger) = classify(op);
+                        if !can_check {
+                            return (false, false);
+                        }
+                        has_trigger |= op_has_trigger;
+                    }
+                    (true, has_trigger)
+                }
+                _ => (false, false),
             }
-            _ => (false, false),
         }
+        let (can_check, has_trigger) = classify(op);
+        can_check && has_trigger
     }
 
     fn has_never_match_trigger_facet(
