@@ -79,9 +79,26 @@ pub struct ClassMetadata {
 }
 
 impl VisitMut<Type> for ClassMetadata {
-    fn recurse_mut(&mut self, _: &mut dyn FnMut(&mut Type)) {
-        // TODO: This is definitely wrong. We have types in lots of these places.
-        // Doesn't seem to have gone wrong yet, but it will.
+    fn recurse_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        // Class metadata is exported cross-module, so every embedded type position must
+        // be traversed to allow export-time forcing/sanitization.
+        if let Some(metaclass) = self.metaclass.get_mut() {
+            metaclass.visit_mut(f);
+        }
+        for (_name, ty) in &mut self.keywords.0 {
+            ty.visit_mut(f);
+        }
+        if let Some(typed_dict_metadata) = &mut self.typed_dict_metadata
+            && let ExtraItems::Extra(extra_item) = &mut typed_dict_metadata.extra_items
+        {
+            extra_item.ty.visit_mut(f);
+        }
+        if let Some(enum_metadata) = &mut self.enum_metadata {
+            enum_metadata.cls.visit_mut(f);
+        }
+        if let Some(dataclass_transform_metadata) = &mut self.dataclass_transform_metadata {
+            dataclass_transform_metadata.visit_mut(f);
+        }
     }
 }
 
