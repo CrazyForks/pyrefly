@@ -1990,7 +1990,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.error(
             errors,
             *case_range,
-            ErrorInfo::Kind(ErrorKind::Unreachable),
+            ErrorInfo::Kind(ErrorKind::UnreachableMatchCase),
             format!("Case pattern can never match subject of type `{subject_display}`"),
         );
     }
