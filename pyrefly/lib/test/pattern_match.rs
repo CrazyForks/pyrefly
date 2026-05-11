@@ -97,6 +97,31 @@ def ok_class_pattern(x: int) -> None:
 );
 
 testcase!(
+    test_match_case_unreachable_after_prior_case_exhausts_type,
+    r#"
+from typing import assert_type
+
+# No error on the duplicate case int() because top-level class patterns
+# are excluded from the reachability check (see is_match_case_reachability_op).
+def prior_case_exhausts_union_branch(x: int | str) -> None:
+    match x:
+        case int():
+            pass
+        case str():
+            pass
+        case int():
+            pass
+
+def duplicate_literal(x: bool) -> None:
+    match x:  # E: Missing cases: False
+        case True:
+            pass
+        case True:  # E: Case pattern can never match subject of type `Literal[False]`
+            pass
+"#,
+);
+
+testcase!(
     test_pattern_dict_key_enum,
     r#"
 from enum import StrEnum
