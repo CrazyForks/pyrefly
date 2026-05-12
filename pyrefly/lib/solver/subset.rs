@@ -2026,6 +2026,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             {
                 self.is_subset_eq(&got, want)
             }
+            (Type::ClassType(got), Type::SelfType(want))
+                if got == want && self.type_order.is_final(got.class_object()) =>
+            {
+                Ok(())
+            }
             (Type::SelfType(_), Type::SelfType(_)) => Ok(()),
             (Type::SelfType(got), _) => self.is_subset_eq(&Type::ClassType(got.clone()), want),
             (Type::Tuple(l), Type::Tuple(u)) => self.is_subset_tuple(l, u),

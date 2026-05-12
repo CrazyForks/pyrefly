@@ -210,6 +210,22 @@ class Shape:
 );
 
 testcase!(
+    test_self_return_final_concrete_class,
+    r#"
+from typing import Self, final
+
+@final
+class Shape:
+    def method(self) -> Self:
+        return Shape()
+
+    @classmethod
+    def cls_method(cls) -> Self:
+        return Shape()
+    "#,
+);
+
+testcase!(
     test_self_in_class_body_expression,
     r#"
 from typing import Self, assert_type
