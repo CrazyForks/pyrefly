@@ -535,11 +535,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // We manually construct an error using the message from the context but a
                     // Deprecated error kind so that the error is shown at the Deprecated severity
                     // (default: WARN) rather than the severity of the context's error kind.
-                    let dep_msg = deprecation.as_error_message(format!(
+                    let header = format!(
                         "`{}` is deprecated",
                         m.kind.format(self.module().name())
-                    ));
-                    let (header, details) = dep_msg.split_off_first();
+                    );
+                    let detail = deprecation.as_error_detail();
                     let mut builder = if let Some(ctx) = context {
                         errors
                             .error_builder(range, ErrorKind::Deprecated, ctx().format())
@@ -547,7 +547,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     } else {
                         errors.error_builder(range, ErrorKind::Deprecated, header)
                     };
-                    for detail in details {
+                    if let Some(detail) = detail {
                         builder = builder.with_detail(detail);
                     }
                     builder.emit();

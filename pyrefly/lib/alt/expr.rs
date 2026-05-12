@@ -794,11 +794,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .to_func_kind()
             .map(|func_kind| func_kind.format(self.module().name()));
         if let Some(deprecated_function) = deprecated_function {
-            let dep_msg =
-                deprecation.as_error_message(format!("`{deprecated_function}` is deprecated"));
-            let (header, details) = dep_msg.split_off_first();
+            let header = format!("`{deprecated_function}` is deprecated");
+            let detail = deprecation.as_error_detail();
             let mut builder = errors.error_builder(range, ErrorKind::Deprecated, header);
-            for detail in details {
+            if let Some(detail) = detail {
                 builder = builder.with_detail(detail);
             }
             builder.emit();

@@ -372,7 +372,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if matched {
             // If the selected overload is deprecated, we log a deprecation error.
             if let Some(deprecation) = &closest_overload.func.1.metadata.flags.deprecation {
-                let msg = deprecation.as_error_message(format!(
+                let header = format!(
                     "Call to deprecated overload `{}`",
                     closest_overload
                         .func
@@ -380,13 +380,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         .metadata
                         .kind
                         .format(self.module().name())
-                ));
-                let (header, details) = msg.split_off_first();
-                errors
-                    .error_builder(arguments_range, ErrorKind::Deprecated, header)
-                    .with_details(details)
-                    .with_context(context)
-                    .emit();
+                );
+                let detail = deprecation.as_error_detail();
+                let mut error_builder =
+                    errors.error_builder(arguments_range, ErrorKind::Deprecated, header);
+                if let Some(detail) = detail {
+                    error_builder = error_builder.with_detail(detail);
+                }
+                error_builder.with_context(context).emit();
             }
             errors.extend(closest_overload.call_errors);
             if let Ok(specialization_errors) =

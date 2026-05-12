@@ -4152,12 +4152,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             if let Some(range) = x.check_deprecated
                 && let Some(deprecation) = self.exports.get_deprecated(m, name)
             {
-                let dep_msg = deprecation.as_error_message(format!("`{name}` is deprecated"));
-                let (header, details) = dep_msg.split_off_first();
-                errors
-                    .error_builder(range, ErrorKind::Deprecated, header)
-                    .with_details(details)
-                    .emit();
+                let header = format!("`{name}` is deprecated");
+                let detail = deprecation.as_error_detail();
+                let mut error_builder = errors.error_builder(range, ErrorKind::Deprecated, header);
+                if let Some(detail) = detail {
+                    error_builder = error_builder.with_detail(detail);
+                }
+                error_builder.emit();
             }
             self.get_from_export(m, None, &KeyExport(name.clone()))
                 .arc_clone()
