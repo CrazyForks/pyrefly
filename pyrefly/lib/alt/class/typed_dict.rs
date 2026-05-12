@@ -176,16 +176,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         } else {
                             &|| TypeCheckContext::of_kind(TypeCheckKind::TypedDictUnpacking)
                         };
-                    self.solver().error(
-                        &item_ty,
-                        &partial_td_ty,
-                        check_errors,
-                        range,
-                        tcc,
-                        subset_error,
-                        None,
-                        Vec::new(),
-                    );
+                    self.solver()
+                        .error_builder(
+                            &item_ty,
+                            &partial_td_ty,
+                            check_errors,
+                            range,
+                            tcc,
+                            subset_error,
+                        )
+                        .emit();
                 }
             }
         });
