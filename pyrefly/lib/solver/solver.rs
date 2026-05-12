@@ -3016,6 +3016,10 @@ impl Solver {
         tcc: &dyn Fn() -> TypeCheckContext,
         subset_error: SubsetError,
     ) -> ErrorBuilder<'a> {
+        if !errors.is_active() {
+            // Optimization: return early to avoid evaluating `tcc`.
+            return errors.error_builder(loc, ErrorKind::InternalError, String::new());
+        }
         let tcc = tcc();
         let msg = tcc.kind.format_error(
             &self.for_display(got.clone()),

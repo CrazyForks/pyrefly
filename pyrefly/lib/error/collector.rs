@@ -125,7 +125,7 @@ impl ErrorCollector {
         }
     }
 
-    fn is_active(&self) -> bool {
+    pub fn is_active(&self) -> bool {
         self.style != ErrorStyle::Never
     }
 
