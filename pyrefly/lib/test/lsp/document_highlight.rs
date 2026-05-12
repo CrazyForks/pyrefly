@@ -14,6 +14,7 @@ use ruff_text_size::TextSize;
 use crate::state::state::State;
 use crate::test::util::code_frame_of_source_at_range;
 use crate::test::util::get_batched_lsp_operations_report;
+use crate::test::util::get_batched_lsp_operations_report_allow_error;
 
 fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String {
     let transaction = state.transaction();
@@ -44,6 +45,25 @@ fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String
         })
         .join("\n");
     format!("Highlights:\n{highlights}")
+}
+
+#[test]
+#[should_panic(expected = "local references should point at identifiers")]
+fn document_highlight_crash_on_match_without_case() {
+    // A match statement without a `case` keyword causes parser recovery to produce
+    // an AST where `identifier_at` returns `None` for a reference range, crashing
+    // the LSP's document_highlight handler.
+    let code = r#"
+class Reducer:
+    def __init__(self, type: int) -> None:
+        self.type = type
+
+    def fit(self) -> None:
+        match self.type:
+            Reducer
+#            ^
+"#;
+    let _ = get_batched_lsp_operations_report_allow_error(&[("main", code)], get_test_report);
 }
 
 #[test]
