@@ -73,6 +73,7 @@ use crate::config::base::RecursionOverflowHandler;
 use crate::config::error_kind::ErrorKind;
 use crate::dispatch_anyidx;
 use crate::error::collector::ErrorCollector;
+use crate::error::context::ErrorContext;
 use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
@@ -3208,6 +3209,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.unions(vec![x, y])
     }
 
+    /// Adds an error and returns Type::Any(Error)
     pub fn error(
         &self,
         errors: &ErrorCollector,
@@ -3216,6 +3218,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         msg: String,
     ) -> Type {
         errors.add(range, info, vec1![msg]);
+        self.heap.mk_any_error()
+    }
+
+    /// Adds an error with the given context and returns Type::Any(Error)
+    pub fn error_with_context(
+        &self,
+        errors: &ErrorCollector,
+        range: TextRange,
+        kind: ErrorKind,
+        msg: String,
+        context: Option<&dyn Fn() -> ErrorContext>,
+    ) -> Type {
+        errors
+            .error_builder(range, kind, msg)
+            .with_context(context)
+            .emit();
         self.heap.mk_any_error()
     }
 
