@@ -16,7 +16,6 @@ use pyrefly_util::lock::Mutex;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
-use vec1::vec1;
 
 use crate::config::error::ErrorConfig;
 use crate::config::error_kind::Severity;
@@ -334,14 +333,13 @@ impl ErrorBuilder<'_> {
             ctx_annotations.extend(annotations);
             annotations = ctx_annotations;
         }
-        let msg = if details.is_empty() {
-            vec1![header]
-        } else {
-            let mut v = vec1![header];
-            v.extend(details);
-            v
-        };
-        let mut err = Error::new(self.collector.module_info.dupe(), self.range, msg, kind);
+        let mut err = Error::new(
+            self.collector.module_info.dupe(),
+            self.range,
+            header,
+            details,
+            kind,
+        );
         for (range, label) in annotations {
             err = err.with_annotation(range, label);
         }
