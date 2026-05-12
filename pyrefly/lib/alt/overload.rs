@@ -37,7 +37,6 @@ use crate::alt::unwrap::HintRef;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::solver::solver::TypeVarSpecializationError;
 use crate::types::callable::Callable;
 use crate::types::callable::FuncMetadata;
@@ -382,11 +381,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         .kind
                         .format(self.module().name())
                 ));
-                errors.add(
-                    arguments_range,
-                    ErrorInfo::new(ErrorKind::Deprecated, context),
-                    msg,
-                );
+                let (header, details) = msg.split_off_first();
+                let mut builder =
+                    errors.error_builder(arguments_range, ErrorKind::Deprecated, header);
+                for detail in details {
+                    builder = builder.with_detail(detail);
+                }
+                builder = builder.with_context(context);
+                builder.emit();
             }
             errors.extend(closest_overload.call_errors);
             if let Ok(specialization_errors) =
@@ -456,11 +458,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             // We intentionally discard closest_overload.call_errors. When no overload matches,
             // there's a high likelihood that the "closest" one by our heuristic isn't the right
             // one, in which case the call errors are just noise.
-            errors.add(
-                arguments_range,
-                ErrorInfo::new(ErrorKind::NoMatchingOverload, context),
-                msg,
-            );
+            let (header, details) = msg.split_off_first();
+            let mut builder =
+                errors.error_builder(arguments_range, ErrorKind::NoMatchingOverload, header);
+            for detail in details {
+                builder = builder.with_detail(detail);
+            }
+            builder = builder.with_context(context);
+            builder.emit();
             (
                 self.heap.mk_any_error(),
                 closest_overload.func.1.signature.clone(),

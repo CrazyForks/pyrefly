@@ -4267,7 +4267,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             && let Some(kind) = error.kind()
         {
             let (ctx, msg) = error.display();
-            errors.add(range, ErrorInfo::new(kind, ctx.as_deref()), msg);
+            let (header, details) = msg.split_off_first();
+            let mut builder = errors.error_builder(range, kind, header);
+            for detail in details {
+                builder = builder.with_detail(detail);
+            }
+            builder = builder.with_context(ctx.as_deref());
+            builder.emit();
         }
     }
 
