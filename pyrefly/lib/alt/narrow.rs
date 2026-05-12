@@ -1945,7 +1945,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let subject_info = self.with_type_for_exhaustiveness_check(self.get_idx(*subject_idx));
         let subject_ty = subject_info.ty().clone();
         if subject_ty.is_any()
-            || subject_ty.is_never()
             || matches!(&subject_ty, Type::ClassType(cls) if cls.is_builtin("object"))
         {
             return;
@@ -1997,12 +1996,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ///
     /// Returns `true` only when we understand all sub-ops AND at least one
     /// constrains a value or class tightly enough to produce `Never`
-    /// (a "trigger", e.g. `Eq`, `Is`, or faceted `IsInstance`).
+    /// (a "trigger", e.g. `Eq`, `Is`, or `IsInstance`).
     ///
     /// Structural ops like `IsSequence`/`LenEq` are checkable but aren't
-    /// triggers on their own. Top-level `IsInstance` (no facet) is excluded
-    /// because class patterns can involve `__match_args__` and structural
-    /// subtyping, making disjointness unreliable without deeper analysis.
+    /// triggers on their own.
     fn is_match_case_reachability_op(op: &NarrowOp) -> bool {
         // Classifies as (can_check, has_trigger). The two dimensions can't be
         // collapsed into a single bool because And/Or need to distinguish
@@ -2010,7 +2007,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         fn classify(op: &NarrowOp) -> (bool, bool) {
             match op {
                 NarrowOp::Atomic(_, AtomicNarrowOp::Eq(_) | AtomicNarrowOp::Is(_)) => (true, true),
-                NarrowOp::Atomic(Some(_), AtomicNarrowOp::IsInstance(_, NarrowSource::Pattern)) => {
+                NarrowOp::Atomic(_, AtomicNarrowOp::IsInstance(_, NarrowSource::Pattern)) => {
                     (true, true)
                 }
                 NarrowOp::Atomic(
