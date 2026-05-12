@@ -1691,11 +1691,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 context,
             )) {
                 Some(ty) => ty,
-                None => self.error(
+                None => self.error_with_context(
                     errors,
                     range,
-                    ErrorInfo::new(ErrorKind::NotAsync, context),
+                    ErrorKind::NotAsync,
                     format!("Expected `{}` to be async", dunder::AENTER),
+                    context,
                 ),
             },
         }
@@ -1731,11 +1732,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             )) {
                 Some(ty) => ty,
                 // We emit this error directly, since it's different from type checking the arguments
-                None => self.error(
+                None => self.error_with_context(
                     errors,
                     range,
-                    ErrorInfo::new(ErrorKind::NotAsync, context),
+                    ErrorKind::NotAsync,
                     format!("Expected `{}` to be async", dunder::AEXIT),
+                    context,
                 ),
             },
         };
@@ -1771,24 +1773,26 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if exit_with_error_errors.len() <= 1 {
             errors.extend(exit_with_error_errors);
         } else {
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::new(ErrorKind::BadContextManager, context),
+                ErrorKind::BadContextManager,
                 format!("`{}` must be callable with the argument types (type[BaseException], BaseException, TracebackType)", kind.context_exit_dunder()),
+                context,
             );
         }
         if exit_with_ok_errors.len() <= 1 {
             errors.extend(exit_with_ok_errors);
         } else {
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::new(ErrorKind::BadContextManager, context),
+                ErrorKind::BadContextManager,
                 format!(
                     "`{}` must be callable with the argument types (None, None, None)",
                     kind.context_exit_dunder()
                 ),
+                context,
             );
         }
         self.union(error_args_result, ok_args_result)

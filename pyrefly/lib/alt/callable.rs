@@ -563,15 +563,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .last()
             .is_some_and(|x| self.is_param_spec_kwargs(x, q, arg_errors));
         if !args_ok || !kwargs_ok {
-            self.error(
+            self.error_with_context(
                 call_errors,
                 arguments_range,
-                ErrorInfo::new(ErrorKind::InvalidParamSpec, context),
+                ErrorKind::InvalidParamSpec,
                 format!(
                     "Expected *-unpacked {}.args and **-unpacked {}.kwargs",
                     q.name(),
                     q.name()
                 ),
+                context,
             );
             None
         } else {
@@ -615,15 +616,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let type_owner = Owner::new();
 
         let error = |errors, range, kind, msg: String| {
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::new(kind, context),
+                kind,
                 format!(
                     "{}{}",
                     msg,
                     function_suffix(callable_name, self.module().name())
                 ),
+                context,
             )
         };
 
@@ -1551,11 +1553,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     Type::Any(_) | Type::Ellipsis => HashMap::new(),
                     _ => {
                         // This could well be our error, but not really sure
-                        self.error(
+                        self.error_with_context(
                             call_errors,
                             arguments_range,
-                            ErrorInfo::new(ErrorKind::InvalidParamSpec, context),
+                            ErrorKind::InvalidParamSpec,
                             format!("Unexpected ParamSpec type: `{}`", self.for_display(p)),
+                            context,
                         );
                         HashMap::new()
                     }

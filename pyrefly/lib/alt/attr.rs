@@ -815,11 +815,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             attr_tys.push(
                 self.resolve_get_access(attr_name, attr, range, errors, context)
                     .unwrap_or_else(|e| {
-                        self.error(
+                        self.error_with_context(
                             errors,
                             range,
-                            ErrorInfo::new(ErrorKind::MissingAttribute, context),
+                            ErrorKind::MissingAttribute,
                             e.to_error_msg(attr_name),
+                            context,
                         )
                     }),
             );
@@ -900,21 +901,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             match result {
                 Ok(_) => {}
                 Err(no_access) => {
-                    self.error(
+                    self.error_with_context(
                         errors,
                         range,
-                        ErrorInfo::new(ErrorKind::MissingAttribute, context),
+                        ErrorKind::MissingAttribute,
                         no_access.to_error_msg(attr_name),
+                        context,
                     );
                 }
             }
         }
         if !(setattr_not_found.is_empty() && setattr_error.is_empty()) {
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::new(ErrorKind::MissingAttribute, context),
+                ErrorKind::MissingAttribute,
                 not_found.to_error_msg(attr_name),
+                context,
             );
         }
     }
@@ -946,21 +949,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             match result {
                 Ok(_) => {}
                 Err(no_access) => {
-                    self.error(
+                    self.error_with_context(
                         errors,
                         range,
-                        ErrorInfo::new(ErrorKind::MissingAttribute, context),
+                        ErrorKind::MissingAttribute,
                         no_access.to_error_msg(attr_name),
+                        context,
                     );
                 }
             }
         }
         if !(delattr_not_found.is_empty() && delattr_error.is_empty()) {
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::new(ErrorKind::MissingAttribute, context),
+                ErrorKind::MissingAttribute,
                 not_found.to_error_msg(attr_name),
+                context,
             );
         }
     }
@@ -1192,14 +1197,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             && !allowed_slots.contains(attr_name)
         {
             let class_name = cls.name();
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::new(ErrorKind::MissingAttribute, context),
+                ErrorKind::MissingAttribute,
                 format!(
                     "Object of class `{class_name}` has no attribute `{attr_name}` \
                      (not declared in `__slots__`)"
                 ),
+                context,
             );
             return true;
         }
@@ -1384,11 +1390,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             Attribute::Simple(ty) => Ok(ty),
             Attribute::ModuleFallback(_, name, ty) => {
-                self.error(
+                self.error_with_context(
                     errors,
                     range,
-                    ErrorInfo::new(ErrorKind::ImplicitImport, context),
+                    ErrorKind::ImplicitImport,
                     format!("Module `{name}` exists, but was not imported explicitly. You are relying on other modules to load it."),
+                    context,
                 );
                 Ok(ty)
             }

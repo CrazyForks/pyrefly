@@ -2061,17 +2061,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             && !allowed_slots.contains::<Name>(name)
         {
             let class_name = class.name();
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::new(
-                    ErrorKind::MissingAttribute,
-                    None::<&dyn Fn() -> ErrorContext>,
-                ),
+                ErrorKind::MissingAttribute,
                 format!(
                     "Object of class `{class_name}` has no attribute `{name}` \
                      (not declared in `__slots__`)"
                 ),
+                None,
             );
         }
 
@@ -4368,11 +4366,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) {
         match class_attr {
             ClassAttribute::NoAccess(e) => {
-                self.error(
+                self.error_with_context(
                     errors,
                     range,
-                    ErrorInfo::new(ErrorKind::NoAccess, context),
+                    ErrorKind::NoAccess,
                     e.to_error_msg(attr_name),
+                    context,
                 );
                 *should_narrow = false;
             }
@@ -4459,11 +4458,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     *should_narrow = false;
                 } else {
                     let e = NoAccessReason::SettingReadOnlyProperty(cls);
-                    self.error(
+                    self.error_with_context(
                         errors,
                         range,
-                        ErrorInfo::new(ErrorKind::ReadOnly, context),
+                        ErrorKind::ReadOnly,
                         e.to_error_msg(attr_name),
+                        context,
                     );
                     *should_narrow = false;
                 }
@@ -4487,11 +4487,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         let e = NoAccessReason::SettingReadOnlyDescriptor(
                             class_type.class_object().dupe(),
                         );
-                        self.error(
+                        self.error_with_context(
                             errors,
                             range,
-                            ErrorInfo::new(ErrorKind::ReadOnly, context),
+                            ErrorKind::ReadOnly,
                             e.to_error_msg(attr_name),
+                            context,
                         );
                     }
                     DescriptorBase::ClassDef(_) => {
@@ -4526,11 +4527,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) {
         match class_attr {
             ClassAttribute::NoAccess(reason) => {
-                self.error(
+                self.error_with_context(
                     errors,
                     range,
-                    ErrorInfo::new(ErrorKind::NoAccess, context),
+                    ErrorKind::NoAccess,
                     reason.to_error_msg(attr_name),
+                    context,
                 );
             }
             ClassAttribute::ReadOnly(_, reason) => {
@@ -4834,11 +4836,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Some(
                 self.resolve_get_class_attr(attr_name, attr, x.range, errors, None)
                     .unwrap_or_else(|e| {
-                        self.error(
+                        self.error_with_context(
                             errors,
                             x.range,
-                            ErrorInfo::new(ErrorKind::NoAccess, None),
+                            ErrorKind::NoAccess,
                             e.to_error_msg(&dunder::GET),
+                            None,
                         )
                     }),
             )
@@ -4861,11 +4864,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Some(
                 self.resolve_get_class_attr(attr_name, attr, x.range, errors, None)
                     .unwrap_or_else(|e| {
-                        self.error(
+                        self.error_with_context(
                             errors,
                             x.range,
-                            ErrorInfo::new(ErrorKind::NoAccess, None),
+                            ErrorKind::NoAccess,
                             e.to_error_msg(&dunder::SET),
+                            None,
                         )
                     }),
             )

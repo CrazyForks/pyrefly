@@ -196,7 +196,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         error_kind: ErrorKind,
         context: Option<&dyn Fn() -> ErrorContext>,
     ) -> CallTarget {
-        self.error(errors, range, ErrorInfo::new(error_kind, context), msg);
+        self.error_with_context(errors, range, error_kind, msg, context);
         CallTarget::Any(AnyStyle::Error)
     }
 
@@ -714,12 +714,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) {
         for e in specialization_errors {
             let kind = e.error_kind();
-            self.error(
-                errors,
-                range,
-                ErrorInfo::new(kind, context),
-                e.to_error_msg(self),
-            );
+            self.error_with_context(errors, range, kind, e.to_error_msg(self), context);
         }
     }
 
@@ -1249,11 +1244,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             && self.should_error_for_abstract_call(&call_target)
         {
             let method_name = meta.kind.format(self.module().name());
-            self.error(
+            self.error_with_context(
                 errors,
                 arguments_range,
-                ErrorInfo::new(ErrorKind::AbstractMethodCall, context),
+                ErrorKind::AbstractMethodCall,
                 format!("Cannot call abstract method `{method_name}`"),
+                context,
             );
         }
         // Does this call target correspond to a function whose keyword arguments we should save?
@@ -1273,23 +1269,25 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let res = match call_target {
             CallTarget::Class(cls, constructor_kind, as_quantified_bound) => {
                 if cls.has_qname("typing", "Any") {
-                    return self.error(
+                    return self.error_with_context(
                         errors,
                         arguments_range,
-                        ErrorInfo::new(ErrorKind::BadInstantiation, context),
+                        ErrorKind::BadInstantiation,
                         format!("`{}` cannot be instantiated", cls.name()),
+                        context,
                     );
                 }
                 let metadata = self.get_metadata_for_class(cls.class_object());
                 if metadata.is_protocol() && constructor_kind == ConstructorKind::BareClassName {
-                    self.error(
+                    self.error_with_context(
                         errors,
                         arguments_range,
-                        ErrorInfo::new(ErrorKind::BadInstantiation, context),
+                        ErrorKind::BadInstantiation,
                         format!(
                             "Cannot instantiate `{}` because it is a protocol",
                             cls.name()
                         ),
+                        context,
                     );
                 } else {
                     let abstract_members = self.get_abstract_members_for_class(cls.class_object());
@@ -1298,10 +1296,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     if constructor_kind == ConstructorKind::BareClassName
                         && !unimplemented_abstract_methods.is_empty()
                     {
-                        self.error(
+                        self.error_with_context(
                             errors,
                             arguments_range,
-                            ErrorInfo::new(ErrorKind::BadInstantiation, context),
+                            ErrorKind::BadInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because the following members are abstract: {}",
                                 cls.name(),
@@ -1311,6 +1309,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             ),
+                            context,
                         );
                     }
                 }
