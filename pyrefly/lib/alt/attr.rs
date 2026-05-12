@@ -41,7 +41,6 @@ use crate::binding::binding::KeyExport;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::error::style::ErrorStyle;
@@ -2564,7 +2563,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     range,
-                    ErrorInfo::Kind(ErrorKind::InvalidArgument),
+                    ErrorKind::InvalidArgument,
                     format!(
                         "The `__bool__` attribute of `{}` has type `{}`, which is not callable",
                         self.for_display(union_member_ty.clone()),

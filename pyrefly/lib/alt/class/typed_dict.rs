@@ -99,7 +99,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             self.error(
                                 check_errors,
                                 key.range(),
-                                ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                                ErrorKind::BadTypedDictKey,
                                 format!("Cannot update read-only field `{key_name}`"),
                             );
                         }
@@ -147,7 +147,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         check_errors,
                         key.range(),
-                        ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                        ErrorKind::BadTypedDictKey,
                         format!(
                             "Expected string literal key, got `{}`",
                             self.for_display(key_type)
@@ -196,7 +196,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         check_errors,
                         range,
-                        ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                        ErrorKind::BadTypedDictKey,
                         format!(
                             "Missing required key `{}` for TypedDict `{}`",
                             key,
@@ -935,7 +935,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 range,
-                ErrorInfo::Kind(ErrorKind::BadClassDefinition),
+                ErrorKind::BadClassDefinition,
                 "TypedDict members must be declared in the form `field: Annotation` with no assignment".to_owned(),
             );
         }
@@ -952,7 +952,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     range,
-                    ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                    ErrorKind::InvalidAnnotation,
                     format!("`{q}` may not be used for TypedDict members",),
                 );
             }
@@ -972,7 +972,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         range,
-                        ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                        ErrorKind::BadTypedDictKey,
                         format!(
                             "Cannot extend closed TypedDict `{}` with extra item `{}`",
                             base.name(),
@@ -986,7 +986,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         // The field type needs to be assignable to the extra_items type.
                         if !self.is_subset_eq(field_ty, &ty) {
                             self.error(
-                                errors, range, ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                                errors, range, ErrorKind::BadTypedDictKey,
                             format!(
                                 "`{}` is not assignable to `extra_items` type `{}` of TypedDict `{}`",
                                 self.for_display(field_ty.clone()), self.for_display(ty), base.name()));
@@ -999,14 +999,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             self.error(
                                 errors,
                                 range,
-                                ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                                ErrorKind::BadTypedDictKey,
                                 format!("Cannot add required field `{}` to TypedDict `{}` with non-read-only `extra_items`", name, base.name()),
                             );
                         } else if !self.is_consistent(field_ty, &ty) {
                             self.error(
                                 errors,
                                 range,
-                                ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                                ErrorKind::BadTypedDictKey,
                                 format!(
                                     "`{}` is not consistent with `extra_items` type `{}` of TypedDict `{}`",
                                     self.for_display(field_ty.clone()), self.for_display(ty), base.name()),

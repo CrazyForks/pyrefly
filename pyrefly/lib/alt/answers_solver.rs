@@ -3214,10 +3214,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         &self,
         errors: &ErrorCollector,
         range: TextRange,
-        info: ErrorInfo,
+        kind: ErrorKind,
         msg: String,
     ) -> Type {
-        errors.add(range, info, vec1![msg]);
+        errors.error_builder(range, kind, msg).emit();
         self.heap.mk_any_error()
     }
 

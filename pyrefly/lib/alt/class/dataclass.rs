@@ -177,7 +177,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     cls.range(),
-                    ErrorInfo::Kind(ErrorKind::BadClassDefinition),
+                    ErrorKind::BadClassDefinition,
                     "Cannot specify both `slots=True` and `__slots__`".to_owned(),
                 );
             } else {
@@ -473,7 +473,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         cls.range(),
-                        ErrorInfo::Kind(ErrorKind::InvalidInheritance),
+                        ErrorKind::InvalidInheritance,
                         format!(
                             "Cannot inherit {} dataclass `{}` from {} dataclass `{}`",
                             current_status,
@@ -869,7 +869,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             range,
-                            ErrorInfo::Kind(ErrorKind::BadClassDefinition),
+                            ErrorKind::BadClassDefinition,
                             format!(
                                 "Dataclass field `{name}` without a default may not follow dataclass field with a default"
                             ),

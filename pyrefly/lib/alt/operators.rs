@@ -397,7 +397,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 x.range,
-                ErrorInfo::Kind(ErrorKind::DivisionByZero),
+                ErrorKind::DivisionByZero,
                 format!(
                     "Cannot divide by zero: `{}` with a literal zero divisor",
                     x.op.as_str()
@@ -601,7 +601,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 x.range,
-                ErrorInfo::Kind(ErrorKind::DivisionByZero),
+                ErrorKind::DivisionByZero,
                 format!(
                     "Cannot divide by zero: `{}=` with a literal zero divisor",
                     x.op.as_str()
@@ -870,7 +870,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 _ => self.error(
                     errors,
                     x.range,
-                    ErrorInfo::Kind(ErrorKind::UnsupportedOperation),
+                    ErrorKind::UnsupportedOperation,
                     context().format(),
                 ),
             }
@@ -929,7 +929,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 range,
-                ErrorInfo::Kind(ErrorKind::UnnecessaryComparison),
+                ErrorKind::UnnecessaryComparison,
                 format!(
                     "Identity comparison `{} {} {}` is always {}",
                     left_str,
@@ -1029,7 +1029,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     range,
-                    ErrorInfo::Kind(ErrorKind::UnsupportedOperation),
+                    ErrorKind::UnsupportedOperation,
                     format!("Cannot broadcast tensor shapes: {}", err),
                 );
                 Type::any_error()

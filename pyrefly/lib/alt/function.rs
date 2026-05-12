@@ -299,7 +299,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             range,
-                            ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                            ErrorKind::InvalidOverload,
                             "@overload declarations must come before function implementation"
                                 .to_owned(),
                         );
@@ -307,7 +307,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             last_range,
-                            ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                            ErrorKind::InvalidOverload,
                             "@overload decorator should not be used on function implementation"
                                 .to_owned(),
                         );
@@ -315,7 +315,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             first_range,
-                            ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                            ErrorKind::InvalidOverload,
                             "Overloaded function must have an implementation".to_owned(),
                         );
                     }
@@ -324,7 +324,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         first_range,
-                        ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                        ErrorKind::InvalidOverload,
                         "Overloaded function needs at least two @overload declarations".to_owned(),
                     );
                     acc.split_off_first().0.1
@@ -357,7 +357,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         defs.first().0,
-                        ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                        ErrorKind::InvalidOverload,
                         "Overloaded function needs at least two @overload declarations".to_owned(),
                     );
                     defs.split_off_first().0.1
@@ -577,7 +577,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 stmt.name.range(),
-                ErrorInfo::Kind(ErrorKind::UnannotatedReturn),
+                ErrorKind::UnannotatedReturn,
                 format!("`{}` is missing a return annotation", stmt.name),
             );
         }
@@ -599,7 +599,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     p.name().range(),
-                    ErrorInfo::Kind(ErrorKind::ImplicitAnyParameter),
+                    ErrorKind::ImplicitAnyParameter,
                     format!(
                         "`{}` is missing an annotation for parameter `{name}`",
                         stmt.name
@@ -643,7 +643,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     stmt.name.range,
-                    ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                    ErrorKind::InvalidAnnotation,
                     "`Self` cannot be used in a static method".to_owned(),
                 );
             }
@@ -672,7 +672,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     stmt.name.range,
-                    ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                    ErrorKind::InvalidAnnotation,
                     format!(
                         "`Self` cannot be used when `{}` has an explicit TypeVar annotation",
                         first_param.name().map_or("self", |n| n.as_str())
@@ -1082,7 +1082,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         x.parameter.name.range,
-                        ErrorInfo::Kind(ErrorKind::BadFunctionDefinition),
+                        ErrorKind::BadFunctionDefinition,
                         format!(
                             "Positional-only parameter `{}` cannot appear after keyword parameters",
                             x.parameter.name
@@ -1129,7 +1129,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 param.range,
-                ErrorInfo::Kind(ErrorKind::BadFunctionDefinition),
+                ErrorKind::BadFunctionDefinition,
                 format!(
                     "Keyword-only parameter `{}` may not appear after ParamSpec args parameter",
                     param.parameter.name
@@ -1192,7 +1192,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             x.range,
-                            ErrorInfo::Kind(ErrorKind::BadFunctionDefinition),
+                            ErrorKind::BadFunctionDefinition,
                             format!(
                                 "TypedDict key '{name}' in **kwargs overlaps with parameter '{name}'"
                             ),
@@ -1213,14 +1213,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     def.range,
-                    ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                    ErrorKind::InvalidParamSpec,
                     "`ParamSpec` *args and **kwargs must be used together".to_owned(),
                 );
             } else {
                 self.error(
                     errors,
                     def.range,
-                    ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                    ErrorKind::InvalidParamSpec,
                     "*args and **kwargs must come from the same `ParamSpec`".to_owned(),
                 );
             }
@@ -1276,7 +1276,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.error(
             errors,
             range,
-            ErrorInfo::Kind(ErrorKind::InvalidDecorator),
+            ErrorKind::InvalidDecorator,
             format!("Decorator `@{name}` can only be used on methods."),
         );
     }
@@ -1682,7 +1682,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // since it includes the decorators, which does not match
                 // the conformance testsuite.
                 id_range,
-                ErrorInfo::Kind(ErrorKind::BadFunctionDefinition),
+                ErrorKind::BadFunctionDefinition,
                 "Type guard functions must accept at least one positional argument".to_owned(),
             );
         }
@@ -1715,7 +1715,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 def.name.range,
-                ErrorInfo::Kind(ErrorKind::BadFunctionDefinition),
+                ErrorKind::BadFunctionDefinition,
                 format!(
                     "Return type `{}` must be assignable to the first argument type `{}`",
                     self.for_display(ty_narrow.clone()),
@@ -1782,7 +1782,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                     errors,
                     range,
-                    ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                    ErrorKind::InvalidOverload,
                     format!(
                         "`{}` has type `{}` after decorator application, which is not callable",
                         func,
@@ -2030,7 +2030,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                                 errors,
                                 *overload_range,
-                                ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                                ErrorKind::InvalidOverload,
                                 "If an overloaded function has no implementation, `@final` should be applied to the first overload only.".to_owned(),
                             );
             }
@@ -2038,7 +2038,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                                 errors,
                                 *overload_range,
-                                ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                                ErrorKind::InvalidOverload,
                                 "If an overloaded function has no implementation, `@override` should be applied to the first overload only.".to_owned(),
                             );
             }
@@ -2048,7 +2048,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                                 errors,
                                 *overload_range,
-                                ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                                ErrorKind::InvalidOverload,
                                 "If `@staticmethod` is present on one overload, all overloads must have that decorator.".to_owned(),
                             );
             }
@@ -2056,7 +2056,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                                 errors,
                                 *overload_range,
-                                ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                                ErrorKind::InvalidOverload,
                                 "If `@classmethod` is present on one overload, all overloads must have that decorator.".to_owned(),
                             );
             }
@@ -2078,7 +2078,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                         errors,
                         *overload_range,
-                        ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                        ErrorKind::InvalidOverload,
                         "`@final` should only be applied to the implementation of an overloaded function.".to_owned(),
                     );
             }
@@ -2086,7 +2086,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                         errors,
                         *overload_range,
-                        ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                        ErrorKind::InvalidOverload,
                         "`@override` should only be applied to the implementation of an overloaded function.".to_owned(),
                     );
             }
@@ -2094,7 +2094,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                         errors,
                         *overload_range,
-                        ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                        ErrorKind::InvalidOverload,
                         "If `@staticmethod` is present on any overload or the implementation, it should be on every overload and the implementation.".to_owned(),
                     );
             }
@@ -2102,7 +2102,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                         errors,
                         *overload_range,
-                        ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                        ErrorKind::InvalidOverload,
                         "If `@classmethod` is present on any overload or the implementation, it should be on every overload and the implementation.".to_owned(),
                     );
             }
@@ -2111,7 +2111,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                     errors,
                     def.id_range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                    ErrorKind::InvalidOverload,
                     "If `@staticmethod` is present on any overload or the implementation, it should be on every overload and the implementation.".to_owned(),
                 );
         }
@@ -2119,7 +2119,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                     errors,
                     def.id_range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidOverload),
+                    ErrorKind::InvalidOverload,
                     "If `@classmethod` is present on any overload or the implementation, it should be on every overload and the implementation.".to_owned(),
                 );
         }

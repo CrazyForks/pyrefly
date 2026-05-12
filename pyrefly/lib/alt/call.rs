@@ -1214,7 +1214,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     range,
-                    ErrorInfo::Kind(ErrorKind::UnnecessaryTypeConversion),
+                    ErrorKind::UnnecessaryTypeConversion,
                     format!(
                         "Unnecessary `{}()` call; argument is already of type `{}`",
                         cls.name(),
@@ -1870,7 +1870,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     return self.error(
                         errors,
                         x.func.range(),
-                        ErrorInfo::Kind(ErrorKind::NotCallable),
+                        ErrorKind::NotCallable,
                         "`NotImplemented` is not callable. Did you mean `NotImplementedError`?".to_owned(),
                     );
                 }

@@ -667,7 +667,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     None => self.error(
                         errors,
                         x.range,
-                        ErrorInfo::Kind(ErrorKind::NotAsync),
+                        ErrorKind::NotAsync,
                         ErrorContext::Await(self.for_display(ty.clone())).format(),
                     ),
                 })
@@ -718,7 +718,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         x.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidSyntax),
+                        ErrorKind::InvalidSyntax,
                         "t-strings are only available in Python 3.14+".to_owned(),
                     )
                 }
@@ -755,7 +755,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         x.range,
-                        ErrorInfo::Kind(ErrorKind::Unsupported),
+                        ErrorKind::Unsupported,
                         "IPython escapes are not supported".to_owned(),
                     )
                 }
@@ -903,7 +903,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 self.error(
                                     errors,
                                     x.range(),
-                                    ErrorInfo::Kind(ErrorKind::NotIterable),
+                                    ErrorKind::NotIterable,
                                     format!("Expected an iterable, got `{}`", self.for_display(ty)),
                                 );
                                 encountered_invalid_star = true;
@@ -1200,7 +1200,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             x.value.range(),
-                            ErrorInfo::Kind(ErrorKind::InvalidArgument),
+                            ErrorKind::InvalidArgument,
                             format!("Expected a mapping, got {}", self.for_display(ty)),
                         );
                     }
@@ -1545,7 +1545,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     x.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidLiteral),
+                    ErrorKind::InvalidLiteral,
                     format!(
                         "Expected literal `True` or `False`, got `{}`",
                         self.for_display(ty)
@@ -1573,7 +1573,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         x.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                        ErrorKind::InvalidTypeVar,
                         format!(
                             "TypeVar must be assigned to a variable named `{}`",
                             lit.value.to_str()
@@ -1584,7 +1584,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     arg.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                    ErrorKind::InvalidTypeVar,
                     "Expected first argument of TypeVar to be a string literal".to_owned(),
                 );
             }
@@ -1596,7 +1596,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         kw.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                        ErrorKind::InvalidTypeVar,
                         "Contradictory variance specifications".to_owned(),
                     );
                 } else {
@@ -1628,7 +1628,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             self.error(
                                 errors,
                                 kw.range,
-                                ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                                ErrorKind::InvalidTypeVar,
                                 "TypeVar cannot have both constraints and bound".to_owned(),
                             );
                             restriction = Some(Restriction::Unrestricted);
@@ -1651,7 +1651,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             self.error(
                                 errors,
                                 kw.range,
-                                ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                                ErrorKind::InvalidTypeVar,
                                 "Multiple values for argument `name`".to_owned(),
                             );
                         } else {
@@ -1663,7 +1663,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             kw.range,
-                            ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                            ErrorKind::InvalidTypeVar,
                             format!("Unexpected keyword argument `{}` to TypeVar", id.id),
                         );
                     }
@@ -1672,7 +1672,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         kw.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                        ErrorKind::InvalidTypeVar,
                         "Cannot pass unpacked keyword arguments to TypeVar".to_owned(),
                     );
                 }
@@ -1683,7 +1683,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 x.range,
-                ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                ErrorKind::InvalidTypeVar,
                 "Missing `name` argument".to_owned(),
             );
         }
@@ -1694,7 +1694,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 x.range,
-                ErrorInfo::Kind(ErrorKind::InvalidTypeVar),
+                ErrorKind::InvalidTypeVar,
                 format!(
                     "Expected at least 2 constraints in TypeVar `{}`, got {}",
                     name.id,
@@ -1742,7 +1742,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         x.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                        ErrorKind::InvalidParamSpec,
                         format!(
                             "ParamSpec must be assigned to a variable named `{}`",
                             lit.value.to_str()
@@ -1753,7 +1753,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     arg.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                    ErrorKind::InvalidParamSpec,
                     "Expected first argument of ParamSpec to be a string literal".to_owned(),
                 );
             }
@@ -1772,7 +1772,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             self.error(
                                 errors,
                                 kw.range,
-                                ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                                ErrorKind::InvalidParamSpec,
                                 "Multiple values for argument `name`".to_owned(),
                             );
                         } else {
@@ -1790,7 +1790,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             kw.range,
-                            ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                            ErrorKind::InvalidParamSpec,
                             format!("Unexpected keyword argument `{}` to ParamSpec", id.id),
                         );
                     }
@@ -1799,7 +1799,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         kw.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                        ErrorKind::InvalidParamSpec,
                         "Cannot pass unpacked keyword arguments to ParamSpec".to_owned(),
                     );
                 }
@@ -1810,7 +1810,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 x.range,
-                ErrorInfo::Kind(ErrorKind::InvalidParamSpec),
+                ErrorKind::InvalidParamSpec,
                 "Missing `name` argument".to_owned(),
             );
         }
@@ -1841,7 +1841,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         x.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidTypeVarTuple),
+                        ErrorKind::InvalidTypeVarTuple,
                         format!(
                             "TypeVarTuple must be assigned to a variable named `{}`",
                             lit.value.to_str()
@@ -1852,7 +1852,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     arg.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidTypeVarTuple),
+                    ErrorKind::InvalidTypeVarTuple,
                     "Expected first argument of TypeVarTuple to be a string literal".to_owned(),
                 );
             }
@@ -1865,7 +1865,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 arg.range(),
-                ErrorInfo::Kind(ErrorKind::InvalidTypeVarTuple),
+                ErrorKind::InvalidTypeVarTuple,
                 "Unexpected positional argument to TypeVarTuple".to_owned(),
             );
         }
@@ -1878,7 +1878,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             self.error(
                                 errors,
                                 kw.range,
-                                ErrorInfo::Kind(ErrorKind::InvalidTypeVarTuple),
+                                ErrorKind::InvalidTypeVarTuple,
                                 "Multiple values for argument `name`".to_owned(),
                             );
                         } else {
@@ -1900,7 +1900,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             kw.range,
-                            ErrorInfo::Kind(ErrorKind::InvalidTypeVarTuple),
+                            ErrorKind::InvalidTypeVarTuple,
                             format!("Unexpected keyword argument `{}` to TypeVarTuple", id.id),
                         );
                     }
@@ -1909,7 +1909,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         kw.range,
-                        ErrorInfo::Kind(ErrorKind::InvalidTypeVarTuple),
+                        ErrorKind::InvalidTypeVarTuple,
                         "Cannot pass unpacked keyword arguments to TypeVarTuple".to_owned(),
                     );
                 }
@@ -1919,7 +1919,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 x.range,
-                ErrorInfo::Kind(ErrorKind::InvalidTypeVarTuple),
+                ErrorKind::InvalidTypeVarTuple,
                 "Missing `name` argument".to_owned(),
             );
         }
@@ -1965,7 +1965,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         x.range(),
-                        ErrorInfo::Kind(ErrorKind::NotIterable),
+                        ErrorKind::NotIterable,
                         format!(
                             "Expected an iterable, got `{}`",
                             self.for_display(unpacked_ty)
@@ -2035,7 +2035,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             range,
-                            ErrorInfo::Kind(ErrorKind::UnsupportedOperation),
+                            ErrorKind::UnsupportedOperation,
                             format!("`{}` is not subscriptable", name.as_ref().as_str()),
                         )
                     }
@@ -2060,7 +2060,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         _ => self.error(
                             errors,
                             range,
-                            ErrorInfo::Kind(ErrorKind::BadSpecialization),
+                            ErrorKind::BadSpecialization,
                             format!(
                                 "Expected 1 type argument for `PyreReadOnly`, got {}",
                                 xs.len()
@@ -2093,7 +2093,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             slice.range(),
-                            ErrorInfo::Kind(ErrorKind::BadIndex),
+                            ErrorKind::BadIndex,
                             format!(
                                 "Enum `{}` does not have a member named `{}`",
                                 cls.name(),
@@ -2112,7 +2112,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             slice.range(),
-                            ErrorInfo::Kind(ErrorKind::BadIndex),
+                            ErrorKind::BadIndex,
                             format!("Enum `{}` can only be indexed by strings", cls.name()),
                         )
                     }
@@ -2182,7 +2182,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             self.error(
                                 errors,
                                 slice.range(),
-                                ErrorInfo::Kind(ErrorKind::BadIndex),
+                                ErrorKind::BadIndex,
                                 format!(
                                     "Enum type `{}` can only be indexed by strings",
                                     self.for_display(base_display_ty)
@@ -2193,7 +2193,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             range,
-                            ErrorInfo::Kind(ErrorKind::UnsupportedOperation),
+                            ErrorKind::UnsupportedOperation,
                             format!(
                                 "`{}` is not subscriptable",
                                 self.for_display(base_display_ty)
@@ -2213,7 +2213,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             slice.range(),
-                            ErrorInfo::Kind(ErrorKind::BadIndex),
+                            ErrorKind::BadIndex,
                             format!(
                                 "Enum type `{}` can only be indexed by strings",
                                 self.for_display(base_display_ty)
@@ -2409,7 +2409,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 self.error(
                                     errors,
                                     slice.range(),
-                                    ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
+                                    ErrorKind::BadTypedDictKey,
                                     format!(
                                         "Invalid key for TypedDict `{}`, got `{}`",
                                         typed_dict.name(),
@@ -2424,7 +2424,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 t => self.error(
                     errors,
                     range,
-                    ErrorInfo::Kind(ErrorKind::UnsupportedOperation),
+                    ErrorKind::UnsupportedOperation,
                     format!("`{}` is not subscriptable", self.for_display(t)),
                 ),
             }
@@ -2557,12 +2557,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let step_val = step.as_ref().and_then(|e| to_step(e));
                 match index_shape_slice(&tensor_type.shape, start, stop, step_val) {
                     Ok(shape) => TensorType::new(tensor_type.base_class.clone(), shape).to_type(),
-                    Err(err) => self.error(
-                        errors,
-                        range,
-                        ErrorInfo::Kind(ErrorKind::BadIndex),
-                        err.to_string(),
-                    ),
+                    Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
                 }
             }
             // Bare ellipsis: tensor[...] - preserves entire shape
@@ -2604,7 +2599,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             return self.error(
                                 errors,
                                 range,
-                                ErrorInfo::Kind(ErrorKind::BadIndex),
+                                ErrorKind::BadIndex,
                                 "Multiple ellipsis not allowed in tensor index".to_owned(),
                             );
                         }
@@ -2632,12 +2627,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     ellipsis_pos.is_some(),
                 ) {
                     Ok(shape) => TensorType::new(tensor_type.base_class.clone(), shape).to_type(),
-                    Err(err) => self.error(
-                        errors,
-                        range,
-                        ErrorInfo::Kind(ErrorKind::BadIndex),
-                        err.to_string(),
-                    ),
+                    Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
                 }
             }
             // Integer index, tensor index, or other
@@ -2651,12 +2641,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         Ok(shape) => {
                             TensorType::new(tensor_type.base_class.clone(), shape).to_type()
                         }
-                        Err(err) => self.error(
-                            errors,
-                            range,
-                            ErrorInfo::Kind(ErrorKind::BadIndex),
-                            err.to_string(),
-                        ),
+                        Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
                     }
                 } else if let Type::Tensor(ref idx_tensor) = idx_type {
                     // Tensor indexing: tensor[index_tensor] replaces first dim with index shape
@@ -2667,12 +2652,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         Ok(shape) => {
                             TensorType::new(tensor_type.base_class.clone(), shape).to_type()
                         }
-                        Err(err) => self.error(
-                            errors,
-                            range,
-                            ErrorInfo::Kind(ErrorKind::BadIndex),
-                            err.to_string(),
-                        ),
+                        Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
                     }
                 } else {
                     // Unknown index type - return shapeless
@@ -2700,7 +2680,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     expr.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                    ErrorKind::InvalidAnnotation,
                     "String literals are not valid tensor dimensions".to_owned(),
                 );
                 None
@@ -2716,7 +2696,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             expr.range(),
-                            ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                            ErrorKind::InvalidAnnotation,
                             "Tensor shape dimension too large".to_owned(),
                         );
                         None
@@ -2726,7 +2706,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         expr.range(),
-                        ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                        ErrorKind::InvalidAnnotation,
                         "Tensor shape dimensions must be integers, not floats or complex numbers"
                             .to_owned(),
                     );
@@ -2748,7 +2728,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             expr.range(),
-                            ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                            ErrorKind::InvalidAnnotation,
                             format!(
                                 "Tensor shape dimensions must be integer literals or type variables, got `{}`",
                                 self.for_display(expr_type)
@@ -2785,7 +2765,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.error(
                             errors,
                             expr.range(),
-                            ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                            ErrorKind::InvalidAnnotation,
                             format!(
                                 "Unsupported operator `{}` in tensor shape dimension",
                                 op.as_str()
@@ -2801,7 +2781,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     expr.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                    ErrorKind::InvalidAnnotation,
                     format!(
                         "Tensor shape dimensions must be positive integer literals, string literals, type variables, or expressions, got `{}`",
                         self.for_display(expr_type)
@@ -2827,7 +2807,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.error(
                         errors,
                         arg.range(),
-                        ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                        ErrorKind::InvalidAnnotation,
                         format!("Tensor shape dimension must be positive, got {}", value),
                     );
                     return None;
@@ -2874,7 +2854,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     second.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                    ErrorKind::InvalidAnnotation,
                     "Tensor shape can have at most one unpacked TypeVarTuple".to_owned(),
                 );
                 return Type::any_error();
@@ -2897,7 +2877,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error(
                     errors,
                     value.range(),
-                    ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
+                    ErrorKind::InvalidAnnotation,
                     format!(
                         "Unpacked type in Tensor shape must be a TypeVarTuple, got `{}`",
                         self.for_display(middle_ty)
@@ -2938,7 +2918,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 range,
-                ErrorInfo::Kind(ErrorKind::BadSpecialization),
+                ErrorKind::BadSpecialization,
                 format!("Expected 1 type argument for `Dim`, got {}", args.len()),
             );
             return Type::any_error();
@@ -2992,7 +2972,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 range,
-                ErrorInfo::Kind(ErrorKind::RedundantCondition),
+                ErrorKind::RedundantCondition,
                 format!("{reason}"),
             );
         }
