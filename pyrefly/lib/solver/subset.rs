@@ -2121,6 +2121,13 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             (Type::Literal(l_lit), Type::Literal(u_lit)) => {
                 ok_or(l_lit.value == u_lit.value, SubsetError::Other)
             }
+            (
+                Type::Literal(box Literal {
+                    value: Lit::Enum(lit),
+                    ..
+                }),
+                Type::SelfType(cls),
+            ) if lit.class == *cls => Ok(()),
             (_, Type::SelfType(cls))
                 if got.is_literal_string() && cls == self.type_order.stdlib().str() =>
             {

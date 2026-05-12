@@ -850,6 +850,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             // member lookup by value. A custom enum __new__ is used for member creation
             // during class definition and should not be re-applied at call sites.
             if class_metadata.is_enum() {
+                let ty = if constructor_kind == ConstructorKind::TypeOfSelf {
+                    self.heap.mk_self_type(cls)
+                } else {
+                    ret
+                };
                 let specialization_errors = self
                     .solver()
                     .finish_quantified_with_type_order(
@@ -859,7 +864,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     )
                     .err();
                 return ConstructedInstance {
-                    ty: ret,
+                    ty,
                     matched_hint,
                     errors,
                     specialization_errors,

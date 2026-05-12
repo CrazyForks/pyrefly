@@ -394,7 +394,6 @@ class C:
 );
 
 testcase!(
-    bug = "Enum members should be assignable to Self",
     test_self_in_enum_classmethod,
     r#"
 from typing import Self
@@ -405,7 +404,7 @@ class E(Enum):
 
     @classmethod
     def f(cls) -> Self:
-        return cls.A  # E: Returned type `Literal[E.A]` is not assignable to declared return type `Self@E`
+        return cls.A
 "#,
 );
 
