@@ -295,6 +295,14 @@ impl ErrorBuilder<'_> {
         self
     }
 
+    /// Convenience method to append multiple detail lines.
+    pub fn with_details(mut self, details: Vec<String>) -> Self {
+        if self.active {
+            self.details.extend(details);
+        }
+        self
+    }
+
     /// Add a secondary labeled span.
     pub fn with_annotation(mut self, range: TextRange, label: String) -> Self {
         if self.active {

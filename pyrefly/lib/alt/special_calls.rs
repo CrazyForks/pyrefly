@@ -418,7 +418,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 }
                             }
                             if all_members_present && !unsafe_overlap_errors.is_empty() {
-                                let mut builder = errors.error_builder(
+                                errors.error_builder(
                                     range,
                                     ErrorKind::UnsafeOverlap,
                                     format!(
@@ -426,11 +426,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                         class_info_cls.name(),
                                         self.for_display(object_type.clone())
                                     ),
-                                );
-                                for e in unsafe_overlap_errors {
-                                    builder = builder.with_detail(e);
-                                }
-                                builder.emit();
+                                ).with_details(unsafe_overlap_errors).emit();
                             }
                         }
                     }

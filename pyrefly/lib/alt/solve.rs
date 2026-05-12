@@ -4154,11 +4154,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             {
                 let dep_msg = deprecation.as_error_message(format!("`{name}` is deprecated"));
                 let (header, details) = dep_msg.split_off_first();
-                let mut builder = errors.error_builder(range, ErrorKind::Deprecated, header);
-                for detail in details {
-                    builder = builder.with_detail(detail);
-                }
-                builder.emit();
+                errors
+                    .error_builder(range, ErrorKind::Deprecated, header)
+                    .with_details(details)
+                    .emit();
             }
             self.get_from_export(m, None, &KeyExport(name.clone()))
                 .arc_clone()
@@ -4253,12 +4252,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         {
             let (ctx, msg) = error.display();
             let (header, details) = msg.split_off_first();
-            let mut builder = errors.error_builder(range, kind, header);
-            for detail in details {
-                builder = builder.with_detail(detail);
-            }
-            builder = builder.with_context(ctx.as_deref());
-            builder.emit();
+            errors
+                .error_builder(range, kind, header)
+                .with_details(details)
+                .with_context(ctx.as_deref())
+                .emit();
         }
     }
 

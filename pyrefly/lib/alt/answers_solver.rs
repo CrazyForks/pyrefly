@@ -3373,27 +3373,24 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     format!("{prev_typed:?}")
                 })
                 .unwrap_or_else(|| "<none>".to_owned());
-            builder = builder.with_detail(format!(
-                "[PYREFLY_FIXPOINT_DETAILS] key={:?} key_idx={idx:?}",
-                K::to_anyidx(idx),
-            ));
-            builder = builder.with_detail(format!(
-                "[PYREFLY_FIXPOINT_DETAILS] module={} path={}",
-                member_bindings.module().name(),
-                member_bindings.module().path(),
-            ));
-            builder =
-                builder.with_detail(format!("[PYREFLY_FIXPOINT_DETAILS] binding={binding:?}",));
-            builder = builder.with_detail(format!(
-                "[PYREFLY_FIXPOINT_DETAILS] answer_type={}",
-                std::any::type_name::<K::Answer>(),
-            ));
-            builder = builder.with_detail(format!(
-                "[PYREFLY_FIXPOINT_DETAILS] previous={previous_debug}",
-            ));
-            builder = builder.with_detail(format!(
-                "[PYREFLY_FIXPOINT_DETAILS] current={typed_answer:?}",
-            ));
+            builder = builder.with_details(vec![
+                format!(
+                    "[PYREFLY_FIXPOINT_DETAILS] key={:?} key_idx={idx:?}",
+                    K::to_anyidx(idx),
+                ),
+                format!(
+                    "[PYREFLY_FIXPOINT_DETAILS] module={} path={}",
+                    member_bindings.module().name(),
+                    member_bindings.module().path(),
+                ),
+                format!("[PYREFLY_FIXPOINT_DETAILS] binding={binding:?}"),
+                format!(
+                    "[PYREFLY_FIXPOINT_DETAILS] answer_type={}",
+                    std::any::type_name::<K::Answer>(),
+                ),
+                format!("[PYREFLY_FIXPOINT_DETAILS] previous={previous_debug}"),
+                format!("[PYREFLY_FIXPOINT_DETAILS] current={typed_answer:?}"),
+            ]);
         }
         builder.emit();
     }

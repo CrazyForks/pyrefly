@@ -630,12 +630,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 msg.push(format!("Did you mean `{suggestion}`?"));
             }
             let (header, details) = msg.split_off_first();
-            let mut builder = errors.error_builder(range, ErrorKind::MissingAttribute, header);
-            for detail in details {
-                builder = builder.with_detail(detail);
-            }
-            builder = builder.with_context(context);
-            builder.emit();
+            errors
+                .error_builder(range, ErrorKind::MissingAttribute, header)
+                .with_details(details)
+                .with_context(context)
+                .emit();
             self.heap.mk_any_error()
         } else {
             self.heap.mk_any_error() // we've encountered internal errors (already logged above)

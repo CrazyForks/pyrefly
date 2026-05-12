@@ -382,13 +382,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         .format(self.module().name())
                 ));
                 let (header, details) = msg.split_off_first();
-                let mut builder =
-                    errors.error_builder(arguments_range, ErrorKind::Deprecated, header);
-                for detail in details {
-                    builder = builder.with_detail(detail);
-                }
-                builder = builder.with_context(context);
-                builder.emit();
+                errors
+                    .error_builder(arguments_range, ErrorKind::Deprecated, header)
+                    .with_details(details)
+                    .with_context(context)
+                    .emit();
             }
             errors.extend(closest_overload.call_errors);
             if let Ok(specialization_errors) =
@@ -459,13 +457,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             // there's a high likelihood that the "closest" one by our heuristic isn't the right
             // one, in which case the call errors are just noise.
             let (header, details) = msg.split_off_first();
-            let mut builder =
-                errors.error_builder(arguments_range, ErrorKind::NoMatchingOverload, header);
-            for detail in details {
-                builder = builder.with_detail(detail);
-            }
-            builder = builder.with_context(context);
-            builder.emit();
+            errors
+                .error_builder(arguments_range, ErrorKind::NoMatchingOverload, header)
+                .with_details(details)
+                .with_context(context)
+                .emit();
             (
                 self.heap.mk_any_error(),
                 closest_overload.func.1.signature.clone(),
