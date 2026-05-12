@@ -125,8 +125,12 @@ impl ErrorCollector {
         }
     }
 
+    fn is_active(&self) -> bool {
+        self.style != ErrorStyle::Never
+    }
+
     pub fn extend(&self, other: ErrorCollector) {
-        if self.style != ErrorStyle::Never {
+        if self.is_active() {
             self.errors.lock().extend(other.errors.into_inner());
         }
     }
@@ -140,7 +144,7 @@ impl ErrorCollector {
     ) -> ErrorBuilder<'_> {
         ErrorBuilder {
             collector: self,
-            active: self.style != ErrorStyle::Never,
+            active: self.is_active(),
             range,
             kind,
             header,
