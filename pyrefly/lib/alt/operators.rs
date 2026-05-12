@@ -228,11 +228,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .map(|(dunder, _, _)| format!("`{dunder}`"))
                 .collect::<Vec<_>>()
                 .join(" or ");
-            self.error(
+            self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::Context(&context),
+                ErrorKind::UnsupportedOperation,
                 format!("Cannot find {dunders}"),
+                Some(&context),
             )
         }
     }

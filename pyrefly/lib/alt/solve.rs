@@ -3214,31 +3214,34 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         )
                         .into_ty()
                     } else {
-                        self.error(
+                        self.error_with_context(
                             errors,
                             range,
-                            ErrorInfo::Context(&context),
+                            ErrorKind::BadMatch,
                             format!(
                                 "Expected literal string in `__match_args__`, got `{}`",
                                 ts[idx]
                             ),
+                            Some(&context),
                         )
                     }
                 } else {
-                    self.error(
+                    self.error_with_context(
                         errors,
                         range,
-                        ErrorInfo::Context(&context),
+                        ErrorKind::BadMatch,
                         format!("Index {idx} out of range for `__match_args__`"),
+                        Some(&context),
                     )
                 }
             }
             Type::Any(AnyStyle::Error) => match_args,
-            _ => self.error(
+            _ => self.error_with_context(
                 errors,
                 range,
-                ErrorInfo::Context(&context),
+                ErrorKind::BadMatch,
                 format!("Expected concrete tuple for `__match_args__`, got `{match_args}`",),
+                Some(&context),
             ),
         }
     }
