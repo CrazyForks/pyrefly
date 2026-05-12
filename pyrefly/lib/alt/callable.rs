@@ -32,7 +32,6 @@ use ruff_text_size::TextRange;
 use starlark_map::ordered_map::OrderedMap;
 use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
-use vec1::vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
@@ -43,7 +42,6 @@ use crate::alt::unwrap::MAX_CALL_HINT_WIDTH;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::error::display::function_suffix;
@@ -1730,11 +1728,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         match meta_shape_func.evaluate(bound_args, &ret_type) {
             Some(Ok(ty)) => ty,
             Some(Err(shape_error)) => {
-                errors.add(
-                    range,
-                    ErrorInfo::Kind(ErrorKind::InvalidArgument),
-                    vec1![format!("{}", shape_error)],
-                );
+                errors
+                    .error_builder(
+                        range,
+                        ErrorKind::InvalidArgument,
+                        format!("{}", shape_error),
+                    )
+                    .emit();
                 ret_type
             }
             None => ret_type,

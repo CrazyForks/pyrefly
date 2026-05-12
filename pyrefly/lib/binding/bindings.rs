@@ -48,7 +48,6 @@ use ruff_text_size::TextSize;
 use starlark_map::Hashed;
 use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
-use vec1::vec1;
 
 use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::Binding;
@@ -95,7 +94,6 @@ use crate::binding::table::TableKeyed;
 use crate::config::base::InferReturnTypes;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
-use crate::error::context::ErrorInfo;
 use crate::export::definitions::MutableCaptureKind;
 use crate::export::exports::Exports;
 use crate::export::exports::LookupExport;
@@ -652,11 +650,10 @@ impl Bindings {
         let semantic_errors = builder.semantic_syntax_errors.into_inner();
         for error in semantic_errors {
             if Self::should_emit_semantic_syntax_error(&error) {
-                builder.errors.add(
-                    error.range,
-                    ErrorInfo::Kind(ErrorKind::InvalidSyntax),
-                    vec1![error.to_string()],
-                );
+                builder
+                    .errors
+                    .error_builder(error.range, ErrorKind::InvalidSyntax, error.to_string())
+                    .emit();
             }
         }
 

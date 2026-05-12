@@ -46,7 +46,6 @@ use ruff_text_size::TextRange;
 use starlark_map::Hashed;
 use starlark_map::small_set::SmallSet;
 use vec1::Vec1;
-use vec1::vec1;
 
 use crate::alt::answers::AnswerEntry;
 use crate::alt::answers::AnswerTable;
@@ -74,7 +73,6 @@ use crate::config::error_kind::ErrorKind;
 use crate::dispatch_anyidx;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::error::error::ErrorQuickFix;
@@ -2844,14 +2842,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
     {
         let range = K::range_with(idx, self.bindings());
-        self.base_errors.add(
-            range,
-            ErrorInfo::Kind(ErrorKind::InternalError),
-            vec1![format!(
-                "Recursion depth limit ({}) exceeded; possible stack overflow prevented",
-                limit
-            )],
-        );
+        self.base_errors
+            .error_builder(
+                range,
+                ErrorKind::InternalError,
+                format!(
+                    "Recursion depth limit ({}) exceeded; possible stack overflow prevented",
+                    limit
+                ),
+            )
+            .emit();
         // Return recursive placeholder (same pattern as cycle handling)
         self.attempt_to_unwind_cycle_from_here(current, idx, calculation)
             .unwrap_or_else(|r| Arc::new(K::promote_recursive(self.heap, r)))
@@ -3268,14 +3268,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 generic_entity
             )
         };
-        errors.add(
-            range,
-            ErrorInfo::Kind(ErrorKind::ImplicitAnyTypeArgument),
-            vec1![
-                msg,
+        errors
+            .error_builder(range, ErrorKind::ImplicitAnyTypeArgument, msg)
+            .with_detail(
                 "Either specify the type argument explicitly, or specify a default for the type variable.".to_owned(),
-            ],
-        );
+            )
+            .emit();
     }
 
     /// Compare two type-erased answers for equality, dispatching through
@@ -3355,11 +3353,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         } else {
             "result"
         };
-        let mut messages = vec1![format!(
-            "Fixpoint iteration did not converge. \
-             Inferred {} `{}`. Adding annotations may help.",
-            noun, typed_answer,
-        )];
+        let mut builder = member_errors.error_builder(
+            K::range_with(idx, member_bindings),
+            ErrorKind::NonConvergentRecursion,
+            format!(
+                "Fixpoint iteration did not converge. \
+                 Inferred {} `{}`. Adding annotations may help.",
+                noun, typed_answer,
+            ),
+        );
         // If PYREFLY_FIXPOINT_DETAILS=1 is set, we output much more detailed information useful
         // for explaining or debugging nonconvergence in terms of Pyrefly internals.
         if Self::fixpoint_details_enabled() {
@@ -3372,38 +3374,36 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     format!("{prev_typed:?}")
                 })
                 .unwrap_or_else(|| "<none>".to_owned());
-            messages.push(format!(
+            builder = builder.with_detail(format!(
                 "[PYREFLY_FIXPOINT_DETAILS] key={:?} key_idx={idx:?}",
                 K::to_anyidx(idx),
             ));
-            messages.push(format!(
+            builder = builder.with_detail(format!(
                 "[PYREFLY_FIXPOINT_DETAILS] module={} path={}",
                 member_bindings.module().name(),
                 member_bindings.module().path(),
             ));
-            messages.push(format!("[PYREFLY_FIXPOINT_DETAILS] binding={binding:?}",));
-            messages.push(format!(
+            builder =
+                builder.with_detail(format!("[PYREFLY_FIXPOINT_DETAILS] binding={binding:?}",));
+            builder = builder.with_detail(format!(
                 "[PYREFLY_FIXPOINT_DETAILS] answer_type={}",
                 std::any::type_name::<K::Answer>(),
             ));
-            messages.push(format!(
+            builder = builder.with_detail(format!(
                 "[PYREFLY_FIXPOINT_DETAILS] previous={previous_debug}",
             ));
-            messages.push(format!(
+            builder = builder.with_detail(format!(
                 "[PYREFLY_FIXPOINT_DETAILS] current={typed_answer:?}",
             ));
         }
-        let range = K::range_with(idx, member_bindings);
-        member_errors.add(
-            range,
-            ErrorInfo::Kind(ErrorKind::NonConvergentRecursion),
-            messages,
-        );
+        builder.emit();
     }
 }
 
 #[cfg(test)]
 mod scc_tests {
+    use vec1::vec1;
+
     use super::*;
 
     /// Create a dummy `SccNodeState::Done` for testing.

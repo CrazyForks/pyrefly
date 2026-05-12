@@ -46,7 +46,6 @@ use crate::binding::binding::Key;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::solver::solver::QuantifiedHandle;
 use crate::solver::solver::TypeVarSpecializationError;
 use crate::types::callable::Callable;
@@ -536,14 +535,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // We manually construct an error using the message from the context but a
                     // Deprecated error kind so that the error is shown at the Deprecated severity
                     // (default: WARN) rather than the severity of the context's error kind.
-                    let mut msg = deprecation.as_error_message(format!(
+                    let dep_msg = deprecation.as_error_message(format!(
                         "`{}` is deprecated",
                         m.kind.format(self.module().name())
                     ));
-                    if let Some(ctx) = context {
-                        msg.insert(0, ctx().format());
+                    let (header, details) = dep_msg.split_off_first();
+                    let mut builder = if let Some(ctx) = context {
+                        errors
+                            .error_builder(range, ErrorKind::Deprecated, ctx().format())
+                            .with_detail(header)
+                    } else {
+                        errors.error_builder(range, ErrorKind::Deprecated, header)
+                    };
+                    for detail in details {
+                        builder = builder.with_detail(detail);
                     }
-                    errors.add(range, ErrorInfo::Kind(ErrorKind::Deprecated), msg);
+                    builder.emit();
                 }
                 *target
             }

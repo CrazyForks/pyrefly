@@ -33,7 +33,6 @@ use crate::alt::unwrap::HintRef;
 use crate::binding::binding::ClassFieldDefinition;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::solver::solver::SubsetError;
@@ -124,22 +123,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             );
                         }
                         None => {
-                            let mut msg = vec1![format!(
-                                "Key `{}` is not defined in TypedDict `{}`",
-                                key_name,
-                                typed_dict.name()
-                            )];
+                            let mut builder = check_errors.error_builder(
+                                key.range(),
+                                ErrorKind::BadTypedDictKey,
+                                format!(
+                                    "Key `{}` is not defined in TypedDict `{}`",
+                                    key_name,
+                                    typed_dict.name()
+                                ),
+                            );
                             if let Some(suggestion) = best_suggestion(
                                 &key_name,
                                 fields.keys().map(|candidate| (candidate, 0usize)),
                             ) {
-                                msg.push(format!("Did you mean `{suggestion}`?"));
+                                builder =
+                                    builder.with_detail(format!("Did you mean `{suggestion}`?"));
                             }
-                            check_errors.add(
-                                key.range(),
-                                ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
-                                msg,
-                            );
+                            builder.emit();
                         }
                     }
                     keys.insert(key_name);

@@ -38,7 +38,6 @@ use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use ruff_text_size::TextSize;
 use vec1::Vec1;
-use vec1::vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
@@ -53,7 +52,6 @@ use crate::binding::narrow::NarrowOp;
 use crate::binding::narrow::NarrowSource;
 use crate::binding::narrow::NarrowingSubject;
 use crate::error::collector::ErrorCollector;
-use crate::error::context::ErrorInfo;
 use crate::error::style::ErrorStyle;
 use crate::types::callable::FunctionKind;
 use crate::types::class::ClassType;
@@ -1918,18 +1916,18 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let subject_display = self.for_display(subject_info.into_ty());
         let remaining_display = self.for_display(remaining_ty.clone());
         let ctx = TypeDisplayContext::new(&[&subject_display, &remaining_display]);
-        let mut msg = vec1![format!(
-            "Match on `{}` is not exhaustive",
-            ctx.display(&subject_display)
-        )];
-        if let Some(missing_cases) = self.format_missing_cases(&remaining_ty) {
-            msg.push(format!("Missing cases: {}", missing_cases));
-        }
-        errors.add(
+        let mut builder = errors.error_builder(
             *subject_range,
-            ErrorInfo::Kind(ErrorKind::NonExhaustiveMatch),
-            msg,
+            ErrorKind::NonExhaustiveMatch,
+            format!(
+                "Match on `{}` is not exhaustive",
+                ctx.display(&subject_display)
+            ),
         );
+        if let Some(missing_cases) = self.format_missing_cases(&remaining_ty) {
+            builder = builder.with_detail(format!("Missing cases: {}", missing_cases));
+        }
+        builder.emit();
     }
 
     pub fn check_match_case_reachability(

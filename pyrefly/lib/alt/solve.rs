@@ -125,7 +125,6 @@ use crate::binding::narrow::identifier_and_chain_prefix_for_expr;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::error::style::ErrorStyle;
@@ -1043,19 +1042,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Conversely, if we find a tparam in `legacy_tparams` but not `tparams`, that means it's
         // used and not declared, which is illegal.
         for (_, extra_tparam) in legacy_params.iter() {
-            errors.add(
-                range,
-                ErrorInfo::Kind(ErrorKind::InvalidTypeAlias),
-                vec1![
+            errors
+                .error_builder(
+                    range,
+                    ErrorKind::InvalidTypeAlias,
                     format!(
                         "Type variable `{}` is out of scope for this `TypeAliasType`",
                         extra_tparam.name()
                     ),
-                    format!(
-                        "Type parameters must be passed as a tuple literal to the `type_params` argument",
-                    )
-                ],
-            );
+                )
+                .with_detail(
+                    "Type parameters must be passed as a tuple literal to the `type_params` argument".to_owned(),
+                )
+                .emit();
         }
         tparams
     }
@@ -2323,11 +2322,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     .iter()
                     .all(|key| self.get_idx(*key).ty().is_never());
                 if !all_terminate {
-                    errors.add(
-                        *range,
-                        ErrorInfo::Kind(ErrorKind::UnboundName),
-                        vec1![format!("`{name}` may be uninitialized")],
-                    );
+                    errors
+                        .error_builder(
+                            *range,
+                            ErrorKind::UnboundName,
+                            format!("`{name}` may be uninitialized"),
+                        )
+                        .emit();
                 }
             }
             BindingExpect::ForwardRefUnion {
@@ -2366,14 +2367,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 if (*left_is_forward_ref && is_plain_type(self, rhs))
                     || (*right_is_forward_ref && is_plain_type(self, lhs))
                 {
-                    errors.add(
-                        *range,
-                        ErrorInfo::Kind(ErrorKind::InvalidAnnotation),
-                        vec1![
+                    errors
+                        .error_builder(
+                            *range,
+                            ErrorKind::InvalidAnnotation,
                             "`|` union syntax does not work with string literals".to_owned(),
-                            "Hint: put the quotes around the entire union type".to_owned(),
-                        ],
-                    );
+                        )
+                        .with_detail("Hint: put the quotes around the entire union type".to_owned())
+                        .emit();
                 }
             }
             BindingExpect::ImplicitAliasCheck {
@@ -3954,11 +3955,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         let add_unknown_name_error = |errors: &ErrorCollector| {
-            let mut msg = vec1![format!("Could not find name `{name}`")];
+            let mut builder = errors.error_builder(
+                name.range,
+                ErrorKind::UnknownName,
+                format!("Could not find name `{name}`"),
+            );
             if let Some(suggestion) = suggestion {
-                msg.push(format!("Did you mean `{suggestion}`?"));
+                builder = builder.with_detail(format!("Did you mean `{suggestion}`?"));
             }
-            errors.add(name.range, ErrorInfo::Kind(ErrorKind::UnknownName), msg);
+            builder.emit();
             self.heap.mk_any_error()
         };
         // We're specifically looking for attributes that are inherited from the parent class
@@ -4147,8 +4152,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             if let Some(range) = x.check_deprecated
                 && let Some(deprecation) = self.exports.get_deprecated(m, name)
             {
-                let msg = deprecation.as_error_message(format!("`{name}` is deprecated"));
-                errors.add(range, ErrorInfo::Kind(ErrorKind::Deprecated), msg);
+                let dep_msg = deprecation.as_error_message(format!("`{name}` is deprecated"));
+                let (header, details) = dep_msg.split_off_first();
+                let mut builder = errors.error_builder(range, ErrorKind::Deprecated, header);
+                for detail in details {
+                    builder = builder.with_detail(detail);
+                }
+                builder.emit();
             }
             self.get_from_export(m, None, &KeyExport(name.clone()))
                 .arc_clone()
@@ -4212,11 +4222,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
         if matches!(submodule_error, FindError::MissingImport(..)) {
             if !fallback.is_unreachable {
-                errors.add(
-                    fallback.stmt_range,
-                    ErrorInfo::Kind(ErrorKind::MissingModuleAttribute),
-                    vec1![format!("Could not import `{name}` from `{m}`")],
-                );
+                errors
+                    .error_builder(
+                        fallback.stmt_range,
+                        ErrorKind::MissingModuleAttribute,
+                        format!("Could not import `{name}` from `{m}`"),
+                    )
+                    .emit();
             }
             self.heap.mk_any_error()
         } else {
@@ -4950,14 +4962,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Pin all relevant vars and collect ranges of PartialContained vars
         for var in vars {
             match self.solver().pin_placeholder_type(var, pin_partial_types) {
-                Some(PinError::ImplicitPartialContained(container_range)) => errors.add(
-                    container_range,
-                    ErrorInfo::Kind(ErrorKind::ImplicitAnyEmptyContainer),
-                    vec1![
+                Some(PinError::ImplicitPartialContained(container_range)) => errors
+                    .error_builder(
+                        container_range,
+                        ErrorKind::ImplicitAnyEmptyContainer,
                         "Cannot infer type of empty container; it will be treated as containing `Any`".to_owned(),
+                    )
+                    .with_detail(
                         "Consider adding a type annotation or initializing with a non-empty value".to_owned(),
-                    ],
-                ),
+                    )
+                    .emit(),
                 Some(PinError::UnfinishedQuantified(q)) => errors.internal_error(
                     ty_range,
                     format!("Unfinished Variable::Quantified: {q}"),

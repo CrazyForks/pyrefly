@@ -46,7 +46,6 @@ use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
-use vec1::vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
@@ -68,7 +67,6 @@ use crate::binding::binding::MethodThatSetsAttr;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::error::signature_diff::render_signature_diff;
@@ -3549,17 +3547,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 diff_lines: extra_lines,
             }) = error
             {
-                let mut msg = vec1![
-                    format!(
-                        "Class member `{}.{}` overrides parent class `{}` in an inconsistent manner",
-                        cls.name(),
-                        field_name,
-                        parent.name()
-                    ),
-                    message,
-                ];
-                msg.extend(extra_lines);
-                errors.add(range, ErrorInfo::Kind(kind), msg);
+                let mut builder = errors
+                    .error_builder(
+                        range,
+                        kind,
+                        format!(
+                            "Class member `{}.{}` overrides parent class `{}` in an inconsistent manner",
+                            cls.name(),
+                            field_name,
+                            parent.name()
+                        ),
+                    )
+                    .with_detail(message);
+                for line in extra_lines {
+                    builder = builder.with_detail(line);
+                }
+                builder.emit();
             }
         }
         if is_explicit_override && !parent_attr_found && !parent_has_any {
@@ -3679,24 +3682,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // intersection is produced (or `Never` if the types are disjoint), then there was
                 // no common base type, so the inheritance is inconsistent.
                 if matches!(intersect, Type::Intersect(_) | Type::Never(_)) {
-                    let mut error_msg = vec1![
-                        format!(
-                            "Field `{field_name}` has inconsistent types inherited from multiple base classes"
-                        ),
-                        "Inherited types include:".to_owned()
-                    ];
+                    let mut builder = errors
+                        .error_builder(
+                            cls.range(),
+                            ErrorKind::InconsistentInheritance,
+                            format!(
+                                "Field `{field_name}` has inconsistent types inherited from multiple base classes"
+                            ),
+                        )
+                        .with_detail("Inherited types include:".to_owned());
                     for info in inherited_field_infos_by_ancestor.iter() {
-                        error_msg.push(format!(
+                        builder = builder.with_detail(format!(
                             "  `{}` from `{}`",
                             self.for_display(info.ty.clone()),
                             info.class.name()
                         ));
                     }
-                    errors.add(
-                        cls.range(),
-                        ErrorInfo::Kind(ErrorKind::InconsistentInheritance),
-                        error_msg,
-                    );
+                    builder.emit();
                 } else {
                     for info in inherited_field_infos_by_ancestor {
                         // Read-write fields should check that parent field's type
@@ -4341,11 +4343,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if let DataclassMember::Field(field, _) = self.get_dataclass_member(cls, attr_name) {
             let field = field.value;
             if field.is_final() {
-                let msg = vec1![
-                    format!("Cannot set field `{attr_name}`"),
-                    ReadOnlyReason::Final(IsFinalVariableInitialized::No).error_message()
-                ];
-                errors.add(range, ErrorInfo::Kind(ErrorKind::ReadOnly), msg);
+                errors
+                    .error_builder(
+                        range,
+                        ErrorKind::ReadOnly,
+                        format!("Cannot set field `{attr_name}`"),
+                    )
+                    .with_detail(
+                        ReadOnlyReason::Final(IsFinalVariableInitialized::No).error_message(),
+                    )
+                    .emit();
             }
         }
     }
@@ -4406,11 +4413,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         narrowed_types,
                     );
                 } else if should_raise_error {
-                    let msg = vec1![
-                        format!("Cannot set field `{attr_name}`"),
-                        reason.error_message()
-                    ];
-                    errors.add(range, ErrorInfo::Kind(ErrorKind::ReadOnly), msg);
+                    errors
+                        .error_builder(
+                            range,
+                            ErrorKind::ReadOnly,
+                            format!("Cannot set field `{attr_name}`"),
+                        )
+                        .with_detail(reason.error_message())
+                        .emit();
                     *should_narrow = false;
                 }
             }
@@ -4536,11 +4546,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 );
             }
             ClassAttribute::ReadOnly(_, reason) => {
-                let msg = vec1![
-                    format!("Cannot delete field `{attr_name}`"),
-                    reason.error_message()
-                ];
-                errors.add(range, ErrorInfo::Kind(ErrorKind::ReadOnly), msg);
+                errors
+                    .error_builder(
+                        range,
+                        ErrorKind::ReadOnly,
+                        format!("Cannot delete field `{attr_name}`"),
+                    )
+                    .with_detail(reason.error_message())
+                    .emit();
             }
             ClassAttribute::ReadWrite(..)
             | ClassAttribute::Property(..)

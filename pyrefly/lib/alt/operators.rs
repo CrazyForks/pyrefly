@@ -29,7 +29,6 @@ use ruff_python_ast::UnaryOp;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
-use vec1::vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
@@ -41,7 +40,6 @@ use crate::binding::binding::KeyAnnotation;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::types::literal::Lit;
@@ -940,23 +938,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             );
         };
         let emit_instance_is_class_warning = |instance_str: &str, class_str: &str, is_op: bool| {
-            errors.add(
-                range,
-                ErrorInfo::Kind(ErrorKind::UnnecessaryComparison),
-                vec1![
+            errors
+                .error_builder(
+                    range,
+                    ErrorKind::UnnecessaryComparison,
                     format!(
                         "Identity comparison between an instance of `{}` and class `{}` is always {}",
                         instance_str,
                         class_str,
                         if is_op { "False" } else { "True" }
                     ),
-                    format!(
-                        "Did you mean to do `{}isinstance(..., {})`?",
-                        if is_op { "" } else { "not " },
-                        class_str,
-                    )
-                ],
-            );
+                )
+                .with_detail(format!(
+                    "Did you mean to do `{}isinstance(..., {})`?",
+                    if is_op { "" } else { "not " },
+                    class_str,
+                ))
+                .emit();
         };
 
         match (left, right) {

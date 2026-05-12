@@ -20,7 +20,6 @@ use ruff_python_ast::Keyword;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
-use vec1::vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
@@ -31,7 +30,6 @@ use crate::alt::types::decorated_function::Decorator;
 use crate::alt::unwrap::HintRef;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::types::callable::FunctionKind;
@@ -420,17 +418,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 }
                             }
                             if all_members_present && !unsafe_overlap_errors.is_empty() {
-                                let mut full_msg = vec1![format!(
-                                    "Runtime checkable protocol `{}` has an unsafe overlap with type `{}`",
-                                    class_info_cls.name(),
-                                    self.for_display(object_type.clone())
-                                )];
-                                full_msg.extend(unsafe_overlap_errors);
-                                errors.add(
+                                let mut builder = errors.error_builder(
                                     range,
-                                    ErrorInfo::Kind(ErrorKind::UnsafeOverlap),
-                                    full_msg,
+                                    ErrorKind::UnsafeOverlap,
+                                    format!(
+                                        "Runtime checkable protocol `{}` has an unsafe overlap with type `{}`",
+                                        class_info_cls.name(),
+                                        self.for_display(object_type.clone())
+                                    ),
                                 );
+                                for e in unsafe_overlap_errors {
+                                    builder = builder.with_detail(e);
+                                }
+                                builder.emit();
                             }
                         }
                     }

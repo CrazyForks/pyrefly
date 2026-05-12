@@ -82,7 +82,6 @@ use crate::binding::narrow::int_from_slice;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
-use crate::error::context::ErrorInfo;
 use crate::error::context::TypeCheckContext;
 use crate::solver::solver::CallContext;
 use crate::types::callable::Param;
@@ -795,11 +794,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .to_func_kind()
             .map(|func_kind| func_kind.format(self.module().name()));
         if let Some(deprecated_function) = deprecated_function {
-            errors.add(
-                range,
-                ErrorInfo::Kind(ErrorKind::Deprecated),
-                deprecation.as_error_message(format!("`{deprecated_function}` is deprecated")),
-            );
+            let dep_msg =
+                deprecation.as_error_message(format!("`{deprecated_function}` is deprecated"));
+            let (header, details) = dep_msg.split_off_first();
+            let mut builder = errors.error_builder(range, ErrorKind::Deprecated, header);
+            for detail in details {
+                builder = builder.with_detail(detail);
+            }
+            builder.emit();
         }
     }
 
@@ -2356,18 +2358,20 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             let key_name = Name::new(field_name);
                             if let Some(field) = fields.get(&key_name) {
                                 if warn_on_not_required_access && !field.required {
-                                    errors.add(
-                                        slice.range(),
-                                        ErrorInfo::Kind(ErrorKind::NotRequiredKeyAccess),
-                                        vec1![format!(
-                                            "TypedDict key `{}` may be absent",
-                                            key_name
-                                        ),
-                                        format!(
+                                    errors
+                                        .error_builder(
+                                            slice.range(),
+                                            ErrorKind::NotRequiredKeyAccess,
+                                            format!(
+                                                "TypedDict key `{}` may be absent",
+                                                key_name
+                                            ),
+                                        )
+                                        .with_detail(format!(
                                             "Hint: guard this access with `'{}' in obj` or `obj.get('{}')`",
                                             key_name, key_name
-                                        )],
-                                    );
+                                        ))
+                                        .emit();
                                 }
                                 field.ty.clone()
                             } else if let ExtraItems::Extra(extra) =
@@ -2375,22 +2379,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             {
                                 extra.ty
                             } else {
-                                let mut msg = vec1![format!(
-                                    "TypedDict `{}` does not have key `{}`",
-                                    typed_dict.name(),
-                                    field_name
-                                )];
+                                let mut builder = errors.error_builder(
+                                    slice.range(),
+                                    ErrorKind::BadTypedDictKey,
+                                    format!(
+                                        "TypedDict `{}` does not have key `{}`",
+                                        typed_dict.name(),
+                                        field_name
+                                    ),
+                                );
                                 if let Some(suggestion) = best_suggestion(
                                     &key_name,
                                     fields.keys().map(|candidate| (candidate, 0usize)),
                                 ) {
-                                    msg.push(format!("Did you mean `{suggestion}`?"));
+                                    builder = builder
+                                        .with_detail(format!("Did you mean `{suggestion}`?"));
                                 }
-                                errors.add(
-                                    slice.range(),
-                                    ErrorInfo::Kind(ErrorKind::BadTypedDictKey),
-                                    msg,
-                                );
+                                builder.emit();
                                 self.heap.mk_any_error()
                             }
                         }
