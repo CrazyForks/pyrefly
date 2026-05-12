@@ -3396,7 +3396,7 @@ impl<'a> CallGraphVisitor<'a> {
                     Origin {
                         kind: OriginKind::SubscriptSetItem,
                         location: self.pysa_location(TextRange::new(
-                            subscript.value.start(),
+                            subscript_range.start(),
                             assign.range().end(),
                         )),
                     },
@@ -3410,7 +3410,7 @@ impl<'a> CallGraphVisitor<'a> {
                         tail: Box::new(OriginKind::AugmentedAssignStatement),
                     },
                     location: self.pysa_location(TextRange::new(
-                        subscript.value.start(),
+                        subscript_range.start(),
                         assign.range().end(),
                     )),
                 },
@@ -3420,7 +3420,7 @@ impl<'a> CallGraphVisitor<'a> {
                 Origin {
                     kind: OriginKind::SubscriptSetItem,
                     location: self.pysa_location(TextRange::new(
-                        subscript.value.start(),
+                        subscript_range.start(),
                         assign.range().end(),
                     )),
                 },
@@ -3433,7 +3433,7 @@ impl<'a> CallGraphVisitor<'a> {
                         tail: Box::new(OriginKind::ForAssign),
                     },
                     location: self.pysa_location(TextRange::new(
-                        subscript.value.start(),
+                        subscript_range.start(),
                         stmt_for.iter.end(),
                     )),
                 },

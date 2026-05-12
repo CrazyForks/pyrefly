@@ -3681,6 +3681,42 @@ def fun(d: dict[str, int]):
 );
 
 call_graph_testcase!(
+    test_dict_subscript_setitem_with_parenthesized_base,
+    TEST_MODULE_NAME,
+    r#"
+def get_dict() -> dict[str, int]:
+    return {}
+
+def fun():
+    (get_dict())[0] = 1
+"#,
+    &|context: &ModuleContext| {
+        vec![(
+            "test.fun",
+            vec![
+                (
+                    "6:6-6:16",
+                    regular_call_callees(vec![create_call_target(
+                        "test.get_dict",
+                        TargetType::Function,
+                    )]),
+                ),
+                (
+                    // The location should start at `(` (column 5), not `g` (column 6),
+                    // because `subscript.range()` includes the opening parenthesis.
+                    "6:5-6:24|artificial-call|subscript-set-item",
+                    regular_call_callees(vec![
+                        create_call_target("builtins.dict.__setitem__", TargetType::Overrides)
+                            .with_implicit_receiver(ImplicitReceiver::TrueWithObjectReceiver)
+                            .with_receiver_class_for_test("builtins.dict", context),
+                    ]),
+                ),
+            ],
+        )]
+    }
+);
+
+call_graph_testcase!(
     test_dict_subscript_setitem_in_multi_assign,
     TEST_MODULE_NAME,
     r#"
