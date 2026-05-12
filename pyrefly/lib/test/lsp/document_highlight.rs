@@ -23,22 +23,17 @@ fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String
         .find_local_references(handle, position, true)
         .into_iter()
         .map(|range| {
-            let kind = if transaction
-                .identifier_at(handle, range.start())
-                .expect("local references should point at identifiers")
-                .context
-                .is_write()
-            {
-                DocumentHighlightKind::WRITE
-            } else {
-                DocumentHighlightKind::READ
+            let kind = match transaction.identifier_at(handle, range.start()) {
+                Some(id) if id.context.is_write() => DocumentHighlightKind::WRITE,
+                Some(_) => DocumentHighlightKind::READ,
+                None => DocumentHighlightKind::TEXT,
             };
             format!(
                 "{}:\n{}",
-                if kind == DocumentHighlightKind::WRITE {
-                    "DocumentHighlightKind::WRITE"
-                } else {
-                    "DocumentHighlightKind::READ"
+                match kind {
+                    DocumentHighlightKind::WRITE => "DocumentHighlightKind::WRITE",
+                    DocumentHighlightKind::READ => "DocumentHighlightKind::READ",
+                    _ => "DocumentHighlightKind::TEXT",
                 },
                 code_frame_of_source_at_range(module_info.contents(), range)
             )
@@ -48,11 +43,7 @@ fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String
 }
 
 #[test]
-#[should_panic(expected = "local references should point at identifiers")]
-fn document_highlight_crash_on_match_without_case() {
-    // A match statement without a `case` keyword causes parser recovery to produce
-    // an AST where `identifier_at` returns `None` for a reference range, crashing
-    // the LSP's document_highlight handler.
+fn document_highlight_no_crash_on_match_without_case() {
     let code = r#"
 class Reducer:
     def __init__(self, type: int) -> None:
@@ -63,7 +54,11 @@ class Reducer:
             Reducer
 #            ^
 "#;
-    let _ = get_batched_lsp_operations_report_allow_error(&[("main", code)], get_test_report);
+    let report = get_batched_lsp_operations_report_allow_error(&[("main", code)], get_test_report);
+    assert!(
+        report.contains("Highlights:"),
+        "Expected highlights in report, got:\n{report}",
+    );
 }
 
 #[test]
