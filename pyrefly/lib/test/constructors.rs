@@ -343,6 +343,56 @@ assert_type(x, Any)
 );
 
 testcase!(
+    test_type_self_constructor_ignores_concrete_new_return,
+    r#"
+from typing import Self, assert_type
+
+class C:
+    def __new__(cls) -> C:
+        return object.__new__(cls)
+
+    @classmethod
+    def make(cls) -> Self:
+        assert_type(cls(), Self)
+        return cls()
+    "#,
+);
+
+testcase!(
+    test_type_self_constructor_ignores_bad_new_return,
+    r#"
+from typing import Self, assert_type
+
+class C:
+    def __new__(cls) -> int:
+        return 0
+
+    @classmethod
+    def make(cls) -> Self:
+        assert_type(cls(), Self)
+        return cls()
+    "#,
+);
+
+testcase!(
+    test_type_self_constructor_checks_new_params,
+    r#"
+from typing import Self, assert_type
+
+class C:
+    def __new__(cls, x: int, y: str) -> "C":
+        return object.__new__(cls)
+
+    @classmethod
+    def make(cls) -> Self:
+        assert_type(cls(1, "a"), Self)
+        cls(1, 2)  # E: Argument `Literal[2]` is not assignable to parameter `y` with type `str`
+        cls()  # E: Missing argument `x`  # E: Missing argument `y`
+        return cls(1, "a")
+    "#,
+);
+
+testcase!(
     test_new_returns_error,
     r#"
 from typing import assert_type, overload, Self
@@ -942,8 +992,8 @@ class C:
     def __new__(cls) -> "C": ...
 
     def method(self) -> None:
-        # __new__ explicitly returns C, not Self, so type(self)() returns C.
-        reveal_type(type(self)())  # E: revealed type: C
+        # `type[Self]` construction returns Self, even when __new__ returns C.
+        reveal_type(type(self)())  # E: revealed type: Self@C
 
 class D(C): ...
 
@@ -961,8 +1011,8 @@ class C:
     def __new__(cls) -> list[Self]: ...
 
     def method(self) -> None:
-        # __new__ returns list[Self], so type(self)() preserves Self.
-        reveal_type(type(self)())  # E: revealed type: list[Self@C]
+        # `type[Self]` construction returns Self, even when __new__ returns another type.
+        reveal_type(type(self)())  # E: revealed type: Self@C
 
 class D(C): ...
 

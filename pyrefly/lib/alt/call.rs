@@ -925,7 +925,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.record_resolved_trace(arguments_range, new_method);
                     recorded_trace = true;
                 }
-                if self.is_compatible_constructor_return(&ret, cls.class_object()) {
+                if constructor_kind == ConstructorKind::TypeOfSelf {
+                    // Pyright, mypy, and ty all infer `Self` for `type[Self]` construction
+                    // regardless of the resolved `__new__` return annotation.
+                    // TODO: flag incompatible `__new__` return annotations at the method definition.
+                } else if self.is_compatible_constructor_return(&ret, cls.class_object()) {
                     dunder_new_ret = Some(ret);
                 } else if !matches!(ret, Type::Any(AnyStyle::Error | AnyStyle::Implicit)) {
                     // Got something other than an instance of the class under construction.
