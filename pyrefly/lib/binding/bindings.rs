@@ -539,7 +539,7 @@ impl Bindings {
 
     pub fn function_has_return_annotation(&self, name: &Identifier) -> bool {
         let b = self.get(self.key_to_idx(&Key::ReturnType(ShortIdentifier::new(name))));
-        if let Binding::ReturnType(box r) = b {
+        if let Binding::ReturnType(r) = b {
             r.kind.has_return_annotation()
         } else if matches!(b, Binding::Any(_)) {
             // This happens when we have an un-annotated return & the inference behavior is "skip and infer Any"

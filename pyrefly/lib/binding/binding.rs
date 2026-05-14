@@ -1215,7 +1215,8 @@ impl DisplayWith<Bindings> for BindingExpect {
             Self::CheckRaisedException(RaisedException::WithoutCause(exc)) => {
                 write!(f, "RaisedException::WithoutCause({})", m.display(exc))
             }
-            Self::CheckRaisedException(RaisedException::WithCause(box (exc, cause))) => {
+            Self::CheckRaisedException(RaisedException::WithCause(exc_cause)) => {
+                let (exc, cause) = &**exc_cause;
                 write!(
                     f,
                     "RaisedException::WithCause({}, {})",
