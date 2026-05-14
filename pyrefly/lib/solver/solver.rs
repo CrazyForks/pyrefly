@@ -33,7 +33,6 @@ use pyrefly_types::tensor::TensorShape;
 use pyrefly_types::tuple::Tuple;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::TArgs;
-use pyrefly_types::types::Union;
 use pyrefly_util::gas::Gas;
 use pyrefly_util::lock::Mutex;
 use pyrefly_util::lock::RwLock;
@@ -1568,15 +1567,11 @@ impl Solver {
     /// Simplify a type as much as we can.
     fn simplify_mut(&self, t: &mut Type) {
         t.transform_mut(&mut |x| {
-            if let Type::Union(box Union {
-                members: xs,
-                display_name: original_name,
-            }) = x
-            {
-                let mut merged = unions(mem::take(xs), &self.heap);
+            if let Type::Union(u) = x {
+                let mut merged = unions(mem::take(&mut u.members), &self.heap);
                 // Preserve union display names during simplification
-                if let Type::Union(box Union { display_name, .. }) = &mut merged {
-                    *display_name = original_name.clone();
+                if let Type::Union(merged_u) = &mut merged {
+                    merged_u.display_name = u.display_name.take();
                 }
                 *x = merged;
             }
@@ -1590,9 +1585,10 @@ impl Solver {
             }
             // Flatten Tensor[prefix, *tuple[...], suffix] after TypeVarTuple resolution
             if let Type::Tensor(tensor) = x
-                && let TensorShape::Unpacked(box (prefix, middle, suffix)) = &mut tensor.shape
-                && let Type::Tuple(tuple_variant) = middle
+                && let TensorShape::Unpacked(unpacked) = &mut tensor.shape
+                && let Type::Tuple(tuple_variant) = &unpacked.1
             {
+                let (prefix, _, suffix) = &**unpacked;
                 match tuple_variant {
                     Tuple::Concrete(elements) => {
                         let mut new_dims = prefix.clone();
@@ -1600,7 +1596,8 @@ impl Solver {
                         new_dims.extend(suffix.clone());
                         tensor.shape = TensorShape::Concrete(new_dims);
                     }
-                    Tuple::Unpacked(box (tuple_prefix, tuple_middle, tuple_suffix)) => {
+                    Tuple::Unpacked(inner) => {
+                        let (tuple_prefix, tuple_middle, tuple_suffix) = &**inner;
                         let mut new_prefix = prefix.clone();
                         new_prefix.extend(tuple_prefix.clone());
                         let mut new_suffix = tuple_suffix.clone();
@@ -1615,20 +1612,21 @@ impl Solver {
                 }
             }
             // When a param spec is resolved, collapse any Concatenate and Callable types that use it
-            if let Type::Concatenate(ts, box Type::ParamSpecValue(paramlist)) = x {
+            if let Type::Concatenate(ts, inner) = x
+                && let Type::ParamSpecValue(paramlist) = &mut **inner
+            {
                 let params = mem::take(paramlist).prepend_types(ts).into_owned();
                 *x = self.heap.mk_param_spec_value(params);
             }
-            if let Type::Concatenate(ts, box Type::Concatenate(ts2, pspec)) = x {
+            if let Type::Concatenate(ts, inner) = x
+                && let Type::Concatenate(ts2, pspec) = &mut **inner
+            {
                 let combined: Box<[PrefixParam]> = ts.iter().chain(ts2.iter()).cloned().collect();
                 *x = self.heap.mk_concatenate(combined, (**pspec).clone());
             }
             let (callable, kind) = match x {
                 Type::Callable(c) => (Some(&mut **c), None),
-                Type::Function(box Function {
-                    signature: c,
-                    metadata: k,
-                }) => (Some(c), Some(k)),
+                Type::Function(f) => (Some(&mut f.signature), Some(&mut f.metadata)),
                 _ => (None, None),
             };
             if let Some(Callable {
@@ -1674,7 +1672,13 @@ impl Solver {
                 let mut new_params = Vec::new();
                 for param in mem::take(param_list).into_items() {
                     match param {
-                        Param::Varargs(_, Type::Unpack(box Type::Tuple(Tuple::Concrete(elts)))) => {
+                        Param::Varargs(_, Type::Unpack(inner))
+                            if matches!(*inner, Type::Tuple(Tuple::Concrete(_))) =>
+                        {
+                            // Guarded by matches! above
+                            let Type::Tuple(Tuple::Concrete(elts)) = *inner else {
+                                unreachable!("guarded by matches! above")
+                            };
                             for elt in elts {
                                 new_params.push(Param::PosOnly(None, elt, Required::Required));
                             }
@@ -1691,7 +1695,8 @@ impl Solver {
     /// See test::generic_basic::test_typevar_or_none for why we need to do this.
     fn erase_unsolved_variables(&self, t: &mut Type) {
         t.transform_mut(&mut |x| match x {
-            Type::Union(box Union { members: xs, .. }) => {
+            Type::Union(u) => {
+                let xs = &mut u.members;
                 let erase_type = |x: &Type| match x {
                     Type::Var(v) => {
                         let lock = self.variables.lock();
@@ -3109,8 +3114,8 @@ impl Solver {
                         _ => res.push(v.to_type(heap)),
                     }
                 }
-                Type::Union(box Union { members: ts, .. }) => {
-                    for t in ts {
+                Type::Union(u) => {
+                    for t in u.members {
                         expand(t, variables, recurser, heap, query_var, residual_read, res);
                     }
                 }
@@ -3423,8 +3428,9 @@ impl SubsetError {
             SubsetError::MissingAttribute(protocol, attribute) => Some(format!(
                 "Protocol `{protocol}` requires attribute `{attribute}`"
             )),
-            SubsetError::IncompatibleAttribute(box (protocol, got, attribute, err)) => {
-                Some(err.to_error_msg(&Name::new(format!("{got}")), &protocol, &attribute))
+            SubsetError::IncompatibleAttribute(inner) => {
+                let (protocol, got, attribute, err) = &*inner;
+                Some(err.to_error_msg(&Name::new(format!("{got}")), protocol, attribute))
             }
             SubsetError::TypedDict(err) => Some(err.to_error_msg()),
             SubsetError::OpenTypedDict(err) => Some(err.to_error_msg()),
