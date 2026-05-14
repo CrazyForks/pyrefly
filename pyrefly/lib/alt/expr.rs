@@ -1008,8 +1008,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         let flattened_items = Ast::flatten_dict_items(items);
-        let hint =
-            hint.filter(|hint| !matches!(hint.types(), [ty] if self.solver().is_partial(ty)));
         if let Some(hint) = hint {
             for hint_ty in hint.types() {
                 let (typed_dict, is_update) = match hint_ty {
@@ -1050,7 +1048,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Infers a type for a dictionary literal with the specified items & an optional contextual hint
     /// In order to preserve information about heterogeneous key/value types, we will infer an anonymous
     /// typed dict if the following conditions are met:
-    /// - there cannot already be a contextual hint
+    /// - there cannot already be a contextual hint, unless it is a bare partial placeholder and at
+    ///   least one literal value still contains an unpinned placeholder var (for example `[]` or
+    ///   `{}`). This lets `{"start": d, "tasks": []}` form an anonymous TypedDict so the open
+    ///   container can be pinned by later use, while still letting plain accumulator patterns like
+    ///   `d[k] = {"x": 1}` widen normally.
     /// - all the keys must be string literals
     /// - any unpacked value is also an anonymous typed dict
     /// - the dict cannot be empty
@@ -1102,10 +1104,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         } else {
             // Use a map to track fields by name so later fields override earlier ones
             let mut typed_dict_fields_map: SmallMap<Name, TypedDictField> = SmallMap::new();
+            let bare_partial_hint = matches!(hint, Some(hint) if matches!(hint.types(), [ty] if self.solver().is_partial(ty)));
             // We can create an anonymous typed dict if there's no hint, the size is reasonable,
-            // and all keys are string literals. Unpackings are resolved later - we only allow them
-            // if all unpackings resolve to anonymous typed dicts.
-            let mut can_create_anonymous_typed_dict = hint.is_none()
+            // and all keys are string literals. A bare partial hint from first-use inference is
+            // also allowed so heterogeneous literals like `{"start": d, "tasks": []}` can first
+            // form an anonymous TypedDict before the outer container pins their shape. Unpackings
+            // are resolved later - we only allow them if all unpackings resolve to anonymous typed
+            // dicts.
+            let mut can_create_anonymous_typed_dict = (hint.is_none() || bare_partial_hint)
                 && items.len() <= ANONYMOUS_TYPED_DICT_MAX_ITEMS
                 && items.iter().all(|item| {
                     item.key.is_none()
@@ -1209,9 +1215,17 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                 }
             });
+            let any_field_has_open_placeholder = typed_dict_fields_map.values().any(|field| {
+                field
+                    .ty
+                    .collect_maybe_placeholder_vars()
+                    .iter()
+                    .any(|v| self.solver().var_is_partial(*v))
+            });
             if can_create_anonymous_typed_dict
                 && !typed_dict_fields_map.is_empty()
                 && typed_dict_fields_map.len() <= ANONYMOUS_TYPED_DICT_MAX_ITEMS
+                && (!bare_partial_hint || any_field_has_open_placeholder)
             {
                 let typed_dict_fields: Vec<_> = typed_dict_fields_map.into_iter().collect();
                 return self.heap.mk_typed_dict(TypedDict::Anonymous(Box::new(

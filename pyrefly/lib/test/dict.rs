@@ -122,6 +122,20 @@ def bin_tasks(dates: list[datetime.date]) -> None:
 );
 
 testcase!(
+    test_loop_assigned_inner_dict_does_not_freeze_first_shape,
+    r#"
+from typing import assert_type
+
+d = {}
+d[0] = {"x": 1}
+d[1] = {"y": 1}
+
+assert_type(d[0], dict[str, int])
+assert_type(d[1], dict[str, int])
+"#,
+);
+
+testcase!(
     test_large_dict_literal_mixed_none,
     r#"
 # Regression test: dict literals with many entries of mixed str | None values
