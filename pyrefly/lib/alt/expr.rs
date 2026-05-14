@@ -1066,6 +1066,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.infer_with_decomposed_hint(
             hint,
             |hint| {
+                // A partial union member carries no structural information for dict decomposition.
+                // The lone-bare-partial case is handled later when deciding whether to form an
+                // anonymous TypedDict.
+                if self.solver().is_partial(hint) {
+                    return None;
+                }
                 let (key_hint, value_hint) = self.decompose_dict(hint);
                 if key_hint.is_none() && value_hint.is_none() {
                     None
