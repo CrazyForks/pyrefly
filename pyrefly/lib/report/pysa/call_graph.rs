@@ -28,7 +28,6 @@ use pyrefly_types::types::BoundMethodType;
 use pyrefly_types::types::OverloadType;
 use pyrefly_types::types::SuperObj;
 use pyrefly_types::types::Type;
-use pyrefly_types::types::Union;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
 use ruff_python_ast::AnyNodeRef;
@@ -162,10 +161,7 @@ impl std::fmt::Display for OriginKind {
             Self::StrCallToDunderMethod => write!(f, "str-call-to-dunder-method"),
             Self::Slice => write!(f, "slice"),
             Self::ChainedAssign { index } => write!(f, "chained-assign:{}", index),
-            Self::Nested {
-                head: box head,
-                tail: box tail,
-            } => write!(f, "{}>{}", tail, head),
+            Self::Nested { head, tail } => write!(f, "{}>{}", tail, head),
         }
     }
 }
@@ -1261,9 +1257,9 @@ fn has_toplevel_call(body: &[Stmt], callee_name: &'static str) -> bool {
 // This also strips `Optional[T]` since that is represented by `Union`
 fn strip_none_from_union(type_: &Type) -> Type {
     match type_ {
-        Type::Union(box Union { members: types, .. }) => {
-            if let Ok(none_index) = types.binary_search(&Type::None) {
-                let mut new_types = types.clone();
+        Type::Union(u) => {
+            if let Ok(none_index) = u.members.binary_search(&Type::None) {
+                let mut new_types = u.members.clone();
                 new_types.remove(none_index);
                 match new_types.len() {
                     0 => panic!("Unexpected union type `{:#?}`", type_),
@@ -1439,22 +1435,25 @@ impl DirectCall {
     ) -> Self {
         Self::is_super_call(callee).or({
             match callee_type {
-                Some(Type::BoundMethod(box BoundMethod {
-                    obj:
+                Some(Type::BoundMethod(bm))
+                    if matches!(
+                        &bm.obj,
                         Type::ClassType(_)
-                        | Type::SelfType(_)
-                        | Type::Type(box Type::SelfType(_))
-                        | Type::Type(box Type::ClassType(_)),
-                    ..
-                })) => {
+                            | Type::SelfType(_)
+                    ) || matches!(
+                        &bm.obj,
+                        Type::Type(inner) if matches!(**inner, Type::SelfType(_) | Type::ClassType(_))
+                    ) =>
+                {
                     // Dynamic dispatch if calling a method via an attribute lookup
                     // on an instance
                     Self::from_bool(false)
                 }
-                Some(Type::BoundMethod(box BoundMethod {
-                    obj: Type::ClassDef(_) | Type::Type(_),
-                    ..
-                })) => Self::from_bool(true),
+                Some(Type::BoundMethod(bm))
+                    if matches!(bm.obj, Type::ClassDef(_) | Type::Type(_)) =>
+                {
+                    Self::from_bool(true)
+                }
                 Some(Type::BoundMethod(_)) => {
                     debug_println!(
                         debug,
@@ -1469,8 +1468,8 @@ impl DirectCall {
                     Self::from_bool(false)
                 }
                 Some(Type::Function(_)) => Self::from_bool(true),
-                Some(Type::Union(box Union { members: types, .. })) => {
-                    Self::is_direct_call(callee, Some(types.first().unwrap()), debug, context)
+                Some(Type::Union(u)) => {
+                    Self::is_direct_call(callee, Some(u.members.first().unwrap()), debug, context)
                 }
                 _ => Self::from_bool(false),
             }
@@ -1562,15 +1561,25 @@ impl<'a> CallGraphVisitor<'a> {
     ) -> ReceiverClassResult {
         let receiver_type = strip_none_from_union(receiver_type);
         match receiver_type {
-            Type::ClassType(class_type)
-            | Type::SelfType(class_type)
-            | Type::SuperInstance(box (_, SuperObj::Instance(class_type))) => ReceiverClassResult {
+            Type::ClassType(class_type) | Type::SelfType(class_type) => ReceiverClassResult {
                 class: Some(ClassRef::from_class(
                     class_type.class_object(),
                     self.module_context,
                 )),
                 is_class_def: false,
             },
+            Type::SuperInstance(si) if matches!(si.1, SuperObj::Instance(_)) => {
+                let SuperObj::Instance(class_type) = si.1 else {
+                    unreachable!("guarded by matches! above")
+                };
+                ReceiverClassResult {
+                    class: Some(ClassRef::from_class(
+                        class_type.class_object(),
+                        self.module_context,
+                    )),
+                    is_class_def: false,
+                }
+            }
             Type::ClassDef(class_def) => {
                 // The receiver is the class itself. Technically, the receiver class type should be `type(SomeClass)`.
                 // However, we strip away the `type` part since it is implied by the `is_class_method` flag.
@@ -1583,10 +1592,13 @@ impl<'a> CallGraphVisitor<'a> {
                     is_class_def: true,
                 }
             }
-            Type::Type(box Type::SelfType(class_type))
-            | Type::Type(box Type::ClassType(class_type))
-                if is_class_method =>
+            Type::Type(inner)
+                if is_class_method && matches!(*inner, Type::SelfType(_) | Type::ClassType(_)) =>
             {
+                let class_type = match &*inner {
+                    Type::SelfType(ct) | Type::ClassType(ct) => ct,
+                    _ => unreachable!("guarded by matches! above"),
+                };
                 ReceiverClassResult {
                     class: Some(ClassRef::from_class(
                         class_type.class_object(),
@@ -1932,7 +1944,8 @@ impl<'a> CallGraphVisitor<'a> {
             Some(Type::ClassType(class_type)) => {
                 call_targets_from_method_name_with_class(class_type.class_object())
             }
-            Some(Type::Union(box Union { members: types, .. })) => types
+            Some(Type::Union(u)) => u
+                .members
                 .iter()
                 .map(|type_| {
                     self.call_targets_from_method_name(
@@ -2154,128 +2167,159 @@ impl<'a> CallGraphVisitor<'a> {
         exclude_object_methods: bool,
     ) -> CallCallees<FunctionRef> {
         match pyrefly_target {
-            Some(CallTargetLookup::Ok(box CallTarget::BoundMethod(type_, target))) => {
-                // Calling a method on a class instance.
-                self.call_targets_from_method_name(
-                    &method_name_from_function(&target.1),
-                    Some(&type_),
-                    callee_expr,
-                    callee_type,
-                    return_type,
-                    /* is_bound_method */ true,
-                    callee_expr_suffix,
-                    /* override_implicit_receiver*/ None,
-                    /* override_is_direct_call */ None,
-                    unknown_callee_as_direct_call,
-                    exclude_object_methods,
-                )
-                .into_call_callees()
-            }
-            Some(CallTargetLookup::Ok(box CallTarget::BoundMethodOverload(type_, targets, ..))) => {
-                targets
-                    .map(|target| {
-                        self.call_targets_from_method_name(
-                            &method_name_from_function(&target.1),
-                            Some(&type_),
-                            callee_expr,
-                            callee_type,
-                            return_type,
-                            /* is_bound_method */ true,
-                            callee_expr_suffix,
-                            /* override_implicit_receiver*/ None,
-                            /* override_is_direct_call */ None,
-                            unknown_callee_as_direct_call,
-                            exclude_object_methods,
-                        )
-                        .into_call_callees()
-                    })
-                    .into_iter()
-                    .reduce(|mut left, right| {
-                        left.join_in_place(right);
-                        left
-                    })
-                    .unwrap()
-            }
-            Some(CallTargetLookup::Ok(box CallTarget::Function(function))) => self
-                .call_targets_from_callable_type(
-                    &function.1,
-                    callee_type,
-                    callee_expr,
-                    return_type,
-                    callee_expr_suffix,
-                    unknown_callee_as_direct_call,
-                    exclude_object_methods,
-                )
-                .into_call_callees(),
-            Some(CallTargetLookup::Ok(box CallTarget::FunctionOverload(functions, ..))) => {
-                functions
-                    .map(|function| {
-                        self.call_targets_from_method_name(
-                            &method_name_from_function(&function.1),
-                            callee_type,
-                            callee_expr,
-                            callee_type,
-                            return_type,
-                            /* is_bound_method */ false,
-                            callee_expr_suffix,
-                            /* override_implicit_receiver*/ None,
-                            /* override_is_direct_call */ None,
-                            unknown_callee_as_direct_call,
-                            exclude_object_methods,
-                        )
-                        .into_call_callees()
-                    })
-                    .into_iter()
-                    .reduce(|mut left, right| {
-                        left.join_in_place(right);
-                        left
-                    })
-                    .unwrap()
-            }
-            Some(CallTargetLookup::Ok(box CallTarget::Class(class_type, _, _))) => {
-                // Constructing a class instance.
-                let (init_method, new_method) = self
-                    .module_context
-                    .resolver
-                    .with_solver("call_graph_constructor", |solver| {
-                        let new_method = solver.get_dunder_new(&class_type, false);
-                        let overrides_new = new_method.is_some();
-                        let init_method = solver.get_dunder_init(
-                            &class_type,
-                            /* get_object_init */ !overrides_new,
+            Some(CallTargetLookup::Ok(ct)) => match *ct {
+                CallTarget::BoundMethod(type_, target) => {
+                    // Calling a method on a class instance.
+                    self.call_targets_from_method_name(
+                        &method_name_from_function(&target.1),
+                        Some(&type_),
+                        callee_expr,
+                        callee_type,
+                        return_type,
+                        /* is_bound_method */ true,
+                        callee_expr_suffix,
+                        /* override_implicit_receiver*/ None,
+                        /* override_is_direct_call */ None,
+                        unknown_callee_as_direct_call,
+                        exclude_object_methods,
+                    )
+                    .into_call_callees()
+                }
+                CallTarget::BoundMethodOverload(type_, targets, ..) => {
+                    targets
+                        .map(|target| {
+                            self.call_targets_from_method_name(
+                                &method_name_from_function(&target.1),
+                                Some(&type_),
+                                callee_expr,
+                                callee_type,
+                                return_type,
+                                /* is_bound_method */ true,
+                                callee_expr_suffix,
+                                /* override_implicit_receiver*/ None,
+                                /* override_is_direct_call */ None,
+                                unknown_callee_as_direct_call,
+                                exclude_object_methods,
+                            )
+                            .into_call_callees()
+                        })
+                        .into_iter()
+                        .reduce(|mut left, right| {
+                            left.join_in_place(right);
+                            left
+                        })
+                        .unwrap()
+                }
+                CallTarget::Function(function) => self
+                    .call_targets_from_callable_type(
+                        &function.1,
+                        callee_type,
+                        callee_expr,
+                        return_type,
+                        callee_expr_suffix,
+                        unknown_callee_as_direct_call,
+                        exclude_object_methods,
+                    )
+                    .into_call_callees(),
+                CallTarget::FunctionOverload(functions, ..) => {
+                    functions
+                        .map(|function| {
+                            self.call_targets_from_method_name(
+                                &method_name_from_function(&function.1),
+                                callee_type,
+                                callee_expr,
+                                callee_type,
+                                return_type,
+                                /* is_bound_method */ false,
+                                callee_expr_suffix,
+                                /* override_implicit_receiver*/ None,
+                                /* override_is_direct_call */ None,
+                                unknown_callee_as_direct_call,
+                                exclude_object_methods,
+                            )
+                            .into_call_callees()
+                        })
+                        .into_iter()
+                        .reduce(|mut left, right| {
+                            left.join_in_place(right);
+                            left
+                        })
+                        .unwrap()
+                }
+                CallTarget::Class(class_type, _, _) => {
+                    // Constructing a class instance.
+                    let (init_method, new_method) = self
+                        .module_context
+                        .resolver
+                        .with_solver("call_graph_constructor", |solver| {
+                            let new_method = solver.get_dunder_new(&class_type, false);
+                            let overrides_new = new_method.is_some();
+                            let init_method = solver.get_dunder_init(
+                                &class_type,
+                                /* get_object_init */ !overrides_new,
+                            );
+                            (init_method, new_method)
+                        })
+                        .unwrap();
+                    self.resolve_constructor_callees(
+                        init_method,
+                        new_method,
+                        callee_expr,
+                        callee_type,
+                        return_type,
+                        callee_expr_suffix,
+                        exclude_object_methods,
+                    )
+                }
+                CallTarget::TypedDict(typed_dict_inner) => {
+                    let init_method = self
+                        .module_context
+                        .resolver
+                        .with_solver("call_graph_typed_dict_init", |solver| {
+                            solver.get_typed_dict_dunder_init(&typed_dict_inner)
+                        });
+                    self.resolve_constructor_callees(
+                        init_method,
+                        /* new_method */ None,
+                        callee_expr,
+                        callee_type,
+                        return_type,
+                        callee_expr_suffix,
+                        exclude_object_methods,
+                    )
+                }
+                CallTarget::Union(targets) => {
+                    if targets.is_empty() {
+                        debug_println!(
+                            self.debug,
+                            "Empty pyrefly target CallTargetLookup::Ok([]) or Error([]) for `{}`",
+                            callee_expr.display_with(self.module_context),
                         );
-                        (init_method, new_method)
-                    })
-                    .unwrap();
-                self.resolve_constructor_callees(
-                    init_method,
-                    new_method,
-                    callee_expr,
-                    callee_type,
-                    return_type,
-                    callee_expr_suffix,
-                    exclude_object_methods,
-                )
-            }
-            Some(CallTargetLookup::Ok(box CallTarget::TypedDict(typed_dict_inner))) => {
-                let init_method = self
-                    .module_context
-                    .resolver
-                    .with_solver("call_graph_typed_dict_init", |solver| {
-                        solver.get_typed_dict_dunder_init(&typed_dict_inner)
-                    });
-                self.resolve_constructor_callees(
-                    init_method,
-                    /* new_method */ None,
-                    callee_expr,
-                    callee_type,
-                    return_type,
-                    callee_expr_suffix,
-                    exclude_object_methods,
-                )
-            }
-            Some(CallTargetLookup::Ok(box CallTarget::Union(targets)))
-            | Some(CallTargetLookup::Error(targets)) => {
+                        CallCallees::new_unresolved(UnresolvedReason::EmptyPyreflyCallTarget)
+                    } else {
+                        targets
+                            .into_iter()
+                            .map(|target| {
+                                self.resolve_pyrefly_target(
+                                    Some(CallTargetLookup::Ok(Box::new(target))),
+                                    callee_expr,
+                                    callee_type,
+                                    return_type,
+                                    callee_expr_suffix,
+                                    unknown_callee_as_direct_call,
+                                    exclude_object_methods,
+                                )
+                            })
+                            .reduce(|mut so_far, call_target| {
+                                so_far.join_in_place(call_target);
+                                so_far
+                            })
+                            .unwrap()
+                    }
+                }
+                _ => CallCallees::new_unresolved(UnresolvedReason::UnexpectedPyreflyTarget),
+            },
+            Some(CallTargetLookup::Error(targets)) => {
                 if targets.is_empty() {
                     debug_println!(
                         self.debug,
@@ -3495,9 +3539,9 @@ impl<'a> CallGraphVisitor<'a> {
         f: impl Fn(&Type) -> CallCallees<FunctionRef>,
     ) -> CallCallees<FunctionRef> {
         match ty {
-            Type::Union(box Union { members, .. }) => {
+            Type::Union(u) => {
                 let mut callees = CallCallees::empty();
-                for type_ in members {
+                for type_ in &u.members {
                     callees.join_in_place(f(type_));
                 }
                 callees
@@ -3512,9 +3556,9 @@ impl<'a> CallGraphVisitor<'a> {
         f: impl Fn(Option<&Type>) -> CallCallees<FunctionRef>,
     ) -> CallCallees<FunctionRef> {
         match ty {
-            Some(Type::Union(box Union { members, .. })) => {
+            Some(Type::Union(u)) => {
                 let mut callees = CallCallees::empty();
-                for type_ in members {
+                for type_ in &u.members {
                     callees.join_in_place(f(Some(type_)));
                 }
                 callees
