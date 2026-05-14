@@ -32,7 +32,6 @@ use pyrefly_types::type_var::PreInferenceVariance;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::TParams;
-use pyrefly_types::types::Union;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::ResultExt;
 use pyrefly_util::visit::Visit;
@@ -640,12 +639,12 @@ impl ClassField {
         self.instantiate_helper(&mut |ty| {
             ty.subst_self_type_mut(&self_type);
             match ty {
-                Type::Function(_)
-                | Type::Overload(_)
-                | Type::Forall(box Forall {
-                    body: Forallable::Function(_),
-                    ..
-                }) => ty.subst_mut_fn(&mut |q| mp.get(q).map(|ty| (*ty).clone())),
+                Type::Function(_) | Type::Overload(_) => {
+                    ty.subst_mut_fn(&mut |q| mp.get(q).map(|ty| (*ty).clone()))
+                }
+                Type::Forall(f) if matches!(f.body, Forallable::Function(_)) => {
+                    ty.subst_mut_fn(&mut |q| mp.get(q).map(|ty| (*ty).clone()))
+                }
                 _ => {
                     let mut qs: SmallSet<&Quantified> = SmallSet::new();
                     ty.collect_quantifieds(&mut qs);
@@ -1331,20 +1330,29 @@ fn make_bound_method_helper(
         !matches!(metadata.kind, FunctionKind::CallbackProtocol(_)) && should_bind(metadata)
     };
     let func = match attr {
-        Type::Forall(box Forall {
-            tparams,
-            body: Forallable::Function(func),
-        }) if should_bind2(&func.metadata) => BoundMethodType::Forall(Forall {
-            tparams,
-            body: func,
-        }),
+        Type::Forall(f)
+            if let Forallable::Function(func) = &f.body
+                && should_bind2(&func.metadata) =>
+        {
+            // Repeated match because pattern guards cannot move out of bindings.
+            let Forall {
+                tparams,
+                body: Forallable::Function(func),
+            } = *f
+            else {
+                unreachable!("guarded by if let above")
+            };
+            BoundMethodType::Forall(Forall {
+                tparams,
+                body: func,
+            })
+        }
         Type::Function(func) if should_bind2(&func.metadata) => BoundMethodType::Function(*func),
         Type::Overload(overload) if should_bind2(&overload.metadata) => {
             BoundMethodType::Overload(overload)
         }
-        Type::Union(box Union {
-            members: ref ts, ..
-        }) => {
+        Type::Union(ref f) => {
+            let ts = &f.members;
             let mut bound_methods = Vec::with_capacity(ts.len());
             for t in ts {
                 match make_bound_method_helper(heap, obj.clone(), t.clone(), should_bind) {
@@ -2722,10 +2730,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 forall(Forallable::Function((**func).clone()), &quantified, None)
                     .map_or(ty, |forall| self.heap.mk_forall(forall))
             }
-            Type::Forall(box Forall { tparams, body }) => {
-                forall(body.clone(), &quantified, Some(tparams))
-                    .map_or(ty, |forall| self.heap.mk_forall(forall))
-            }
+            Type::Forall(f) => forall(f.body.clone(), &quantified, Some(&f.tparams))
+                .map_or(ty, |forall| self.heap.mk_forall(forall)),
             Type::Overload(overload) => self.heap.mk_overload(Overload {
                 signatures: overload.signatures.clone().mapped(|sig| match &sig {
                     OverloadType::Function(func) => {
@@ -2812,9 +2818,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 //
                 // Both of these are heuristics that aren't guaranteed to be correct, but the dunder heuristic has usability benefits
                 // and the ClassVar heuristic aligns us with existing type checkers.
-                if let Type::Callable(box callable) = ty {
+                if let Type::Callable(callable) = ty {
                     ty = self.heap.mk_function(Function {
-                        signature: callable,
+                        signature: *callable,
                         metadata: FuncMetadata::def(self.module(), None, field_name.clone()),
                     })
                 }
@@ -3441,39 +3447,49 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 &mut |got, want| self.is_subset_eq_with_reason(got, want),
             );
             let error = match attr_check {
-                Err(
-                    box (AttrSubsetError::Covariant {
-                        subset_error: SubsetError::PosParamName(child, parent),
-                        ref got,
-                        ref want,
-                        ..
-                    }
-                    | AttrSubsetError::Invariant {
-                        subset_error: SubsetError::PosParamName(child, parent),
-                        ref got,
-                        ref want,
-                        ..
-                    }
-                    | AttrSubsetError::Contravariant {
-                        subset_error: SubsetError::PosParamName(child, parent),
-                        ref got,
-                        ref want,
-                        ..
-                    }),
-                ) if {
-                    // Only use PosParamName when both signatures have the same
-                    // number of parameters. When the counts differ, the name
-                    // mismatch is an artifact of comparing misaligned parameter
-                    // lists (e.g., a lambda whose `self` wasn't stripped by
-                    // method binding). In that case, fall through to BadOverride
-                    // so we get the signature diff.
-                    let got_sigs = got.callable_signatures();
-                    let want_sigs = want.callable_signatures();
-                    got_sigs.len() == 1
-                        && want_sigs.len() == 1
-                        && got_sigs[0].arg_counts().positional.max
-                            == want_sigs[0].arg_counts().positional.max
-                } =>
+                Err(ref e)
+                    if let (Some((child, parent)), Some(got), Some(want)) = (
+                        match &**e {
+                            AttrSubsetError::Covariant {
+                                subset_error: SubsetError::PosParamName(c, p),
+                                ..
+                            }
+                            | AttrSubsetError::Invariant {
+                                subset_error: SubsetError::PosParamName(c, p),
+                                ..
+                            }
+                            | AttrSubsetError::Contravariant {
+                                subset_error: SubsetError::PosParamName(c, p),
+                                ..
+                            } => Some((c, p)),
+                            _ => None,
+                        },
+                        match &**e {
+                            AttrSubsetError::Covariant { got, .. }
+                            | AttrSubsetError::Invariant { got, .. }
+                            | AttrSubsetError::Contravariant { got, .. } => Some(got),
+                            _ => None,
+                        },
+                        match &**e {
+                            AttrSubsetError::Covariant { want, .. }
+                            | AttrSubsetError::Invariant { want, .. }
+                            | AttrSubsetError::Contravariant { want, .. } => Some(want),
+                            _ => None,
+                        },
+                    ) && {
+                        // Only use PosParamName when both signatures have the same
+                        // number of parameters. When the counts differ, the name
+                        // mismatch is an artifact of comparing misaligned parameter
+                        // lists (e.g., a lambda whose `self` wasn't stripped by
+                        // method binding). In that case, fall through to BadOverride
+                        // so we get the signature diff.
+                        let got_sigs = got.callable_signatures();
+                        let want_sigs = want.callable_signatures();
+                        got_sigs.len() == 1
+                            && want_sigs.len() == 1
+                            && got_sigs[0].arg_counts().positional.max
+                                == want_sigs[0].arg_counts().positional.max
+                    } =>
                 {
                     Some(OverrideError {
                         kind: ErrorKind::BadOverrideParamName,
@@ -4574,10 +4590,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .mk_class_type(self.as_class_type_unchecked(child_cls));
         let filter_type = |ty: Type| -> Option<Type> {
             match ty {
-                Type::BoundMethod(box BoundMethod {
-                    obj,
-                    func: BoundMethodType::Overload(overload),
-                }) => {
+                Type::BoundMethod(bm) if matches!(bm.func, BoundMethodType::Overload(_)) => {
+                    // Repeated match because pattern guards cannot move out of bindings.
+                    let BoundMethod {
+                        obj,
+                        func: BoundMethodType::Overload(overload),
+                    } = *bm
+                    else {
+                        unreachable!("guarded by matches! above")
+                    };
                     let self_param = |sig: &OverloadType| match sig {
                         OverloadType::Function(f) => f.signature.get_first_param(),
                         OverloadType::Forall(forall) => forall.body.signature.get_first_param(),

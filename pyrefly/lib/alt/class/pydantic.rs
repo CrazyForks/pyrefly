@@ -22,7 +22,6 @@ use pyrefly_types::callable::Required;
 use pyrefly_types::keywords::DataclassFieldKeywords;
 use pyrefly_types::lit_int::LitInt;
 use pyrefly_types::literal::Lit;
-use pyrefly_types::types::Union;
 use ruff_python_ast::Expr;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
@@ -202,8 +201,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Recursively expands nested RootModels (e.g., RootModel[RootModel[int]] expands to RootModel[int] | int).
     pub fn extract_root_model_inner_type(&self, ty: &Type) -> Option<Type> {
         match ty {
-            Type::Union(box Union { members: types, .. }) => {
-                let root_types: Vec<Type> = types
+            Type::Union(f) => {
+                let root_types: Vec<Type> = f
+                    .members
                     .iter()
                     .filter_map(|t| self.extract_root_model_inner_type(t))
                     .collect();

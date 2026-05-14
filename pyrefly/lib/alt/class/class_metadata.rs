@@ -1145,8 +1145,18 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         if forall.tparams.len() == 1
                             && let Forallable::TypeAlias(type_alias) = &forall.body
                             && let quantified = match self.get_type_alias(type_alias).as_type() {
-                                Type::Type(box Type::Quantified(q))
-                                | Type::Annotated(box Type::Quantified(q), _) => Some(q),
+                                Type::Type(f) if matches!(&*f, Type::Quantified(_)) => {
+                                    let Type::Quantified(q) = *f else {
+                                        unreachable!("guarded by matches! above")
+                                    };
+                                    Some(q)
+                                }
+                                Type::Annotated(f, _) if matches!(&*f, Type::Quantified(_)) => {
+                                    let Type::Quantified(q) = *f else {
+                                        unreachable!("guarded by matches! above")
+                                    };
+                                    Some(q)
+                                }
                                 _ => None,
                             }
                             && let Some(quantified) = quantified
@@ -1222,7 +1232,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                 })
             }
-            Type::Type(box Type::Any(_)) => {
+            Type::Type(f) if f.is_any() => {
                 // `type[Any]` is equivalent to `type` or `Type`
                 let type_obj = self.stdlib.builtins_type().class_object();
                 let metadata = self.get_metadata_for_class(type_obj);

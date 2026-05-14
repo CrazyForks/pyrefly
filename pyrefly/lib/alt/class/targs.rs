@@ -474,7 +474,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let mut suffix = Vec::new();
         for arg in args {
             match arg {
-                Type::Unpack(box Type::Tuple(Tuple::Concrete(elts))) => {
+                Type::Unpack(inner) if let Type::Tuple(Tuple::Concrete(elts)) = &**inner => {
                     if middle.is_empty() {
                         prefix.extend_from_slice(elts);
                     } else {

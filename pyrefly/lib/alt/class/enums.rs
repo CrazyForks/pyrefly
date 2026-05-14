@@ -32,7 +32,6 @@ use crate::error::collector::ErrorCollector;
 use crate::types::class::Class;
 use crate::types::literal::Lit;
 use crate::types::types::Type;
-use crate::types::types::Union;
 
 /// The `_value_` attribute in enums is reserved, and can be annotated to
 /// indicate an explicit type restriction on enum members. Looking it up
@@ -56,9 +55,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 _ => None,
             },
-            Type::Union(box Union { members, .. }) => {
+            Type::Union(f) => {
                 let mut suggestion = None;
-                for member in members {
+                for member in &f.members {
                     if let Some(candidate) = self.suggest_enum_member_for_value(got, member) {
                         match &suggestion {
                             Some(existing) if existing != &candidate => return None,
