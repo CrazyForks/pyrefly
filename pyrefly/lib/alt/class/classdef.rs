@@ -30,6 +30,7 @@ use crate::binding::binding::KeyClassBaseType;
 use crate::binding::binding::KeyClassField;
 use crate::binding::binding::KeyClassMetadata;
 use crate::binding::binding::KeyClassMro;
+use crate::binding::binding::KeyClassSubscriptSymmetry;
 use crate::error::collector::ErrorCollector;
 use crate::types::callable::Param;
 use crate::types::callable::Required;
@@ -104,6 +105,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     pub fn get_abstract_members_for_class(&self, cls: &Class) -> Arc<AbstractClassMembers> {
         self.get_from_class(cls, &KeyAbstractClassCheck(cls.index()))
             .unwrap_or_else(|| Arc::new(AbstractClassMembers::recursive()))
+    }
+
+    pub fn get_subscript_symmetry_for_class(&self, cls: &Class) -> Arc<bool> {
+        self.get_from_class(cls, &KeyClassSubscriptSymmetry(cls.index()))
+            .unwrap_or_else(|| Arc::new(true))
     }
 
     pub fn get_base_types_for_class(&self, cls: &Class) -> Arc<ClassBases> {
