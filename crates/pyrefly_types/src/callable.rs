@@ -445,7 +445,7 @@ impl<To> Visit<To> for DefaultValue
 where
     Type: Visit<To>,
 {
-    const RECURSE_CONTAINS: bool = <Type as Visit<To>>::VISIT_CONTAINS;
+    const RECURSE_CONTAINS: bool = true;
     fn recurse<'a>(&'a self, f: &mut dyn FnMut(&'a To)) {
         self.ty.visit(f);
     }
@@ -455,7 +455,7 @@ impl<To> VisitMut<To> for DefaultValue
 where
     Type: VisitMut<To>,
 {
-    const RECURSE_CONTAINS: bool = <Type as VisitMut<To>>::VISIT_CONTAINS;
+    const RECURSE_CONTAINS: bool = true;
     fn recurse_mut(&mut self, f: &mut dyn FnMut(&mut To)) {
         self.ty.visit_mut(f);
     }

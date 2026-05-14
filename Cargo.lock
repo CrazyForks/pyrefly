@@ -545,12 +545,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "const-str"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f421161cb492475f1661ddc9815a745a1c894592070661180fdec3d4872e9c3"
-
-[[package]]
 name = "constant_time_eq"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2415,7 +2409,6 @@ dependencies = [
  "argfile",
  "bstr",
  "compact_str 0.9.0",
- "const-str",
  "dupe",
  "equivalent",
  "fxhash",
