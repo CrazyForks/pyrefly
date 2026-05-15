@@ -131,6 +131,17 @@ v: types.UnionType = str | None
 );
 
 testcase!(
+    bug = "list[int] is incorrectly treated as a type alias when annotated with types.GenericAlias",
+    test_typeform_generic_alias,
+    r#"
+import types
+
+# At runtime, list[int] creates a types.GenericAlias object.
+v: types.GenericAlias = list[int] # E: `type[list[int]]` is not assignable to `GenericAlias` # E: Expected `v` to be a type alias, got `GenericAlias`
+    "#,
+);
+
+testcase!(
     test_typeform_generic_alias_string_type_argument_in_value_context,
     r#"
 from __future__ import annotations
