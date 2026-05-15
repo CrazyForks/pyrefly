@@ -1025,7 +1025,7 @@ In this example, `os.bacarat` is treated as a module name, so failing to find it
 
 ## missing-override-decorator
 
-A method overrides a parent class method but does not have the `@override` decorator.
+A method overrides a parent class method but does not have the `@override` decorator. We do not emit this error for dunder methods.
 
 This error supports strict override enforcement as specified in the [typing spec](https://typing.python.org/en/latest/spec/class-compat.html#strict-enforcement-per-project). When enabled, it requires all overriding methods to be explicitly marked with `@typing.override`.
 

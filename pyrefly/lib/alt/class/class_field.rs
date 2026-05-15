@@ -3600,6 +3600,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if !is_explicit_override
             && parent_attr_found
             && !parent_has_any
+            && !is_dunder(field_name.as_str())
             && class_field.can_have_override_decorator()
         {
             self.error(
