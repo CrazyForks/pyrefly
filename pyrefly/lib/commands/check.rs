@@ -1196,12 +1196,7 @@ impl CheckArgs {
 
         // Count only ordinary errors for exit code determination. Directives
         // (e.g. reveal_type) do not contribute to the error count.
-        let mut ordinary_errors_count = config_errors_count;
-        for error in &ordinary_errors {
-            if error.severity() >= Severity::Error {
-                ordinary_errors_count += 1;
-            }
-        }
+        let ordinary_errors_count = config_errors_count + ordinary_errors.len();
 
         // Merge directives into the display list, re-sorting by module
         // name, path, and source range so output preserves file/line
@@ -1233,7 +1228,12 @@ impl CheckArgs {
 
         if self.output.summary != Summary::None {
             let suppress_count = errors.suppressed.len();
-            let mut parts = vec![count(ordinary_errors_count, "error")];
+            let label = if min_severity < Severity::Error {
+                "diagnostic"
+            } else {
+                "error"
+            };
+            let mut parts = vec![count(ordinary_errors_count, label)];
             if suppress_count > 0 {
                 parts.push(format!("{} suppressed", number_thousands(suppress_count)));
             }
