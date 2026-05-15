@@ -221,10 +221,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         {
             // Check if the slice is a string literal
             let key_ty = self.expr_infer(slice, errors);
-            if let Type::Literal(box pyrefly_types::literal::Literal {
-                value: Lit::Str(field_name),
-                ..
-            }) = &key_ty
+            if let Type::Literal(f) = &key_ty
+                && let pyrefly_types::literal::Literal {
+                    value: Lit::Str(field_name),
+                    ..
+                } = &**f
             {
                 // Look up the field in the TypedDict
                 if let Some(metadata) = self

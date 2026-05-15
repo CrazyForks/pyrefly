@@ -15,7 +15,6 @@ use pyrefly_types::callable::ArgCounts;
 use pyrefly_types::callable::Param;
 use pyrefly_types::tuple::Tuple;
 use pyrefly_types::types::TArgs;
-use pyrefly_types::types::Union;
 use pyrefly_util::gas::Gas;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
@@ -166,7 +165,7 @@ impl<'a, Ans: LookupAnswer> ArgsExpander<'a, Ans> {
     /// Expands a type according to https://typing.python.org/en/latest/spec/overload.html#argument-type-expansion.
     fn expand_type(&self, ty: Type) -> Vec<Type> {
         match ty {
-            Type::Union(box Union { members: ts, .. }) => ts,
+            Type::Union(f) => f.members,
             Type::ClassType(cls) if cls.is_builtin("bool") => {
                 vec![
                     Lit::Bool(true).to_implicit_type(),
@@ -185,8 +184,12 @@ impl<'a, Ans: LookupAnswer> ArgsExpander<'a, Ans> {
                     .map(Lit::to_implicit_type)
                     .collect()
             }
-            Type::Type(box Type::Union(box Union { members: ts, .. })) => {
-                ts.into_map(|t| self.solver.heap.mk_type_of(t))
+            Type::Type(f) if matches!(&*f, Type::Union(_)) => {
+                // Repeated match because pattern guards cannot move out of bindings.
+                let Type::Union(u) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
+                u.members.into_map(|t| self.solver.heap.mk_type_of(t))
             }
             Type::Tuple(Tuple::Concrete(elements)) => {
                 let mut count: usize = 1;

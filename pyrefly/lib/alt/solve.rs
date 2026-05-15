@@ -24,7 +24,6 @@ use pyrefly_types::type_alias::TypeAliasRef;
 use pyrefly_types::type_info::JoinStyle;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDict;
-use pyrefly_types::types::Union;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -137,7 +136,6 @@ use crate::state::loader::FindingOrError;
 use crate::types::annotation::Annotation;
 use crate::types::annotation::Qualifier;
 use crate::types::callable::Callable;
-use crate::types::callable::Function;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Required;
@@ -502,7 +500,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Expr::Name(_) | Expr::Attribute(_) => Some(self.expr_infer(x, errors)),
             _ => None,
         };
-        if let Some(Type::Type(box Type::SpecialForm(special))) = ty {
+        if let Some(Type::Type(ref f)) = ty
+            && let Type::SpecialForm(special) = &**f
+        {
             let qualifier = special.to_qualifier();
             match qualifier {
                 Some(Qualifier::ClassVar | Qualifier::NotRequired | Qualifier::Required)
@@ -804,10 +804,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 vec![Iterable::FixedLen(elts.clone())]
             }
             Type::Tuple(Tuple::Concrete(elts)) => vec![Iterable::FixedLen(elts.clone())],
-            Type::Tuple(Tuple::Unbounded(box elt)) => vec![Iterable::OfType(elt.clone())],
-            Type::Tuple(Tuple::Unpacked(box (prefix, middle, suffix)))
-                if prefix.is_empty() && suffix.is_empty() =>
-            {
+            Type::Tuple(Tuple::Unbounded(elt)) => vec![Iterable::OfType((**elt).clone())],
+            Type::Tuple(Tuple::Unpacked(f)) if f.0.is_empty() && f.2.is_empty() => {
+                let (_, middle, _) = &**f;
                 if let Type::Quantified(q) = middle
                     && q.is_type_var_tuple()
                 {
@@ -819,7 +818,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::Var(v) if let Some(_guard) = self.recurse(*v) => {
                 self.iterate(&self.solver().force_var(*v), range, errors, orig_context)
             }
-            Type::Union(box Union { members: ts, .. }) => ts
+            Type::Union(f) => f
+                .members
                 .iter()
                 .flat_map(|t| self.iterate(t, range, errors, orig_context))
                 .collect(),
@@ -1077,8 +1077,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         tparams: &mut Vec<(TextRange, Quantified)>,
     ) {
         match ty {
-            Type::Union(box Union { members: ts, .. }) => {
-                for t in ts.iter_mut() {
+            Type::Union(f) => {
+                for t in f.members.iter_mut() {
                     self.tvars_to_tparams_for_type_alias(
                         t,
                         alias_anchor,
@@ -1101,11 +1101,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     );
                 }
             }
-            Type::Callable(box callable)
-            | Type::Function(box Function {
-                signature: callable,
-                metadata: _,
-            }) => {
+            Type::Callable(callable) => {
                 let mut visit = |t: &mut Type| {
                     self.tvars_to_tparams_for_type_alias(
                         t,
@@ -1117,6 +1113,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     )
                 };
                 callable.recurse_mut(&mut visit);
+            }
+            Type::Function(func) => {
+                let mut visit = |t: &mut Type| {
+                    self.tvars_to_tparams_for_type_alias(
+                        t,
+                        alias_anchor,
+                        seen_type_vars,
+                        seen_type_var_tuples,
+                        seen_param_specs,
+                        tparams,
+                    )
+                };
+                func.signature.recurse_mut(&mut visit);
             }
             Type::Concatenate(prefix, pspec) => {
                 for t in prefix {
@@ -1338,12 +1347,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 return true;
             }
             match ty {
-                Type::Union(box Union { members, .. }) => {
+                Type::Union(f) => {
                     // If any member is free of self-refs, it provides a base case
                     // and all other self-referencing members are guarded.
                     let mut has_self_ref = false;
                     let mut has_base_case = false;
-                    for m in members {
+                    for m in &f.members {
                         if has_unguarded_self_ref(m, is_self_ref) {
                             has_self_ref = true;
                         } else {
@@ -1597,8 +1606,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         visiting: &mut SmallSet<(ModuleName, TypeAliasIndex)>,
     ) {
         match ty {
-            Type::UntypedAlias(box TypeAliasData::Ref(r))
-                if r.module_name == self.module().name() =>
+            Type::UntypedAlias(f)
+                if let TypeAliasData::Ref(r) = &**f
+                    && r.module_name == self.module().name() =>
             {
                 let key = (r.module_name, r.index);
                 if visiting.contains(&key) {
@@ -2252,7 +2262,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             BindingExpect::CheckRaisedException(RaisedException::WithoutCause(exc)) => {
                 self.check_is_exception(exc, exc.range(), false, errors);
             }
-            BindingExpect::CheckRaisedException(RaisedException::WithCause(box (exc, cause))) => {
+            BindingExpect::CheckRaisedException(RaisedException::WithCause(f)) => {
+                let (exc, cause) = &**f;
                 self.check_is_exception(exc, exc.range(), false, errors);
                 self.check_is_exception(cause, cause.range(), true, errors);
             }
@@ -2348,7 +2359,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 fn is_plain_type<Ans: LookupAnswer>(me: &AnswersSolver<Ans>, t: Type) -> bool {
                     match t {
                         Type::ClassDef(_) => true,
-                        Type::Type(box Type::ClassType(cls)) => cls.targs().is_empty(),
+                        Type::Type(ref f) if let Type::ClassType(cls) = &**f => {
+                            cls.targs().is_empty()
+                        }
                         // `None` is `NoneType` at runtime, which is a plain type that
                         // doesn't support `__or__` with string literals.
                         Type::None => true,
@@ -2388,16 +2401,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let is_exempt = if let Expr::Call(call) = expr.as_ref() {
                     let swallower = self.error_swallower();
                     let result_ty = self.expr_infer(expr, &swallower);
-                    matches!(
+                    (matches!(
                         &result_ty,
-                        Type::TypeVar(_)
-                            | Type::ParamSpec(_)
-                            | Type::TypeVarTuple(_)
-                            | Type::Type(box Type::ClassType(_))
-                    ) || {
-                        let callable_ty = self.expr_infer(&call.func, &swallower);
-                        matches!(&callable_ty, Type::ClassDef(_))
-                    }
+                        Type::TypeVar(_) | Type::ParamSpec(_) | Type::TypeVarTuple(_)
+                    ) || matches!(&result_ty, Type::Type(f) if matches!(&**f, Type::ClassType(_))))
+                        || {
+                            let callable_ty = self.expr_infer(&call.func, &swallower);
+                            matches!(&callable_ty, Type::ClassDef(_))
+                        }
                 } else {
                     false
                 };
@@ -2893,7 +2904,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         match self.get_idx(*obj_binding).ty() {
                             Type::Any(style) => style.propagate(),
                             Type::ClassType(obj_cls) => make_super_instance(obj_cls, &|| SuperObj::Instance(obj_cls.clone())),
-                            Type::Type(box Type::ClassType(obj_cls)) => {
+                            Type::Type(f) if let Type::ClassType(obj_cls) = &**f => {
                                 make_super_instance(obj_cls, &|| SuperObj::Class(obj_cls.clone()))
                             }
                             Type::ClassDef(obj_cls) => {
@@ -2903,7 +2914,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             Type::SelfType(obj_cls) => {
                                 make_super_instance(obj_cls, &|| SuperObj::Instance(obj_cls.clone()))
                             }
-                            Type::Type(box Type::SelfType(obj_cls)) => {
+                            Type::Type(f) if let Type::SelfType(obj_cls) = &**f => {
                                 make_super_instance(obj_cls, &|| SuperObj::Class(obj_cls.clone()))
                             }
                             t => {
@@ -3499,7 +3510,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .as_ref()
             .and_then(|ann| ann.ty(self.heap, self.stdlib));
         if x.is_unreachable {
-            if let Some(box expr) = &x.expr {
+            if let Some(expr) = &x.expr {
                 self.expr_infer(expr, errors);
             }
             self.error(
@@ -3509,7 +3520,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 "This `return` statement is unreachable".to_owned(),
             )
         } else if x.is_async && x.is_generator {
-            if let Some(box expr) = &x.expr {
+            if let Some(expr) = &x.expr {
                 self.expr_infer(expr, errors);
                 self.error(
                     errors,
@@ -3532,7 +3543,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 TypeCheckContext::of_kind(TypeCheckKind::ExplicitFunctionReturn)
                     .with_annotation(annot_range, "declared return type".to_owned())
             };
-            if let Some(box expr) = &x.expr {
+            if let Some(expr) = &x.expr {
                 self.expr(expr, hint.as_ref().map(|t| (t, tcc)), errors)
             } else if let Some(hint) = hint {
                 let none = self.heap.mk_none();
@@ -3545,7 +3556,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             let hint = Some(self.heap.mk_class_type(self.stdlib.bool().clone()));
             let tcc: &dyn Fn() -> TypeCheckContext =
                 &|| TypeCheckContext::of_kind(TypeCheckKind::TypeGuardReturn);
-            if let Some(box expr) = &x.expr {
+            if let Some(expr) = &x.expr {
                 self.expr(expr, hint.as_ref().map(|t| (t, tcc)), errors)
             } else if let Some(hint) = hint {
                 let none = self.heap.mk_none();
@@ -3560,7 +3571,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 TypeCheckContext::of_kind(TypeCheckKind::ExplicitFunctionReturn)
                     .with_annotation(annot_range, "declared return type".to_owned())
             };
-            if let Some(box expr) = &x.expr {
+            if let Some(expr) = &x.expr {
                 self.expr(expr, hint.as_ref().map(|t| (t, tcc)), errors)
             } else if let Some(hint) = hint {
                 let none = self.heap.mk_none();
@@ -3718,7 +3729,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::Tuple(Tuple::Unbounded(t)) => {
                 vec![check(*t, range)]
             }
-            Type::Union(box Union { members, .. }) => members
+            Type::Union(f) => f
+                .members
                 .into_iter()
                 .flat_map(|t| self.decompose_except_types(t, range, check))
                 .collect(),
@@ -4924,8 +4936,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.check_type_form(&self.get_type_alias(ta).as_type(), allow_none)
             }
             Type::None if allow_none => true,
-            Type::Union(box Union { members, .. }) => {
-                for member in members {
+            Type::Union(f) => {
+                for member in &f.members {
                     // `None` can be part of an implicit type alias if it's
                     // part of a union. In other words, we treat
                     // `x = T | None` as a type alias, but not `x = None`
@@ -5528,9 +5540,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             ty = self.promote_forall(*forall, range, errors);
         };
         match self.canonicalize_all_class_types(ty, range, errors) {
-            Type::Union(box Union { members: xs, .. }) if !xs.is_empty() => {
+            Type::Union(f) if !f.members.is_empty() => {
                 let mut ts = Vec::new();
-                for x in xs {
+                for x in f.members {
                     let t = self.untype_opt(x, range, errors)?;
                     ts.push(t);
                 }
@@ -5583,29 +5595,40 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::None => Some(self.heap.mk_none()), // Both a value and a type
             Type::Ellipsis => Some(self.heap.mk_ellipsis()), // A bit weird because of tuples, so just promote it
             Type::Any(style) => Some(style.propagate()),
-            Type::TypeAlias(box TypeAliasData::Value(ta)) => {
+            Type::TypeAlias(ta) if matches!(&*ta, TypeAliasData::Value(_)) => {
+                let TypeAliasData::Value(ta) = *ta else {
+                    unreachable!("guarded by matches! above")
+                };
                 let mut aliased_type = self.untype_opt(ta.as_type(), range, errors)?;
-                if let Type::Union(box Union { display_name, .. }) = &mut aliased_type {
-                    *display_name = Some((self.module().name(), (*ta.name).clone()));
+                if let Type::Union(f) = &mut aliased_type {
+                    f.display_name = Some((self.module().name(), (*ta.name).clone()));
                 }
                 Some(aliased_type)
             }
             // `as_type_alias` untypes a type alias in order to validate that it is a legal type.
             // If we hit a recursive reference to the alias while untyping it, delay the untyping
             // to avoid a cycle.
-            Type::TypeAlias(ta @ box TypeAliasData::Ref(_)) => Some(Type::UntypedAlias(ta)),
-            t @ Type::Unpack(
-                box Type::Tuple(_)
-                | box Type::TypeVarTuple(_)
-                | box Type::Quantified(_)
-                | box Type::UntypedAlias(_),
-            ) => Some(t),
-            Type::Unpack(box Type::Var(v)) if let Some(_guard) = self.recurse(v) => self
-                .untype_opt(
-                    self.heap.mk_unpack(self.solver().force_var(v)),
+            Type::TypeAlias(ta) if matches!(&*ta, TypeAliasData::Ref(_)) => {
+                Some(Type::UntypedAlias(ta))
+            }
+            t @ Type::Unpack(_)
+                if matches!(
+                    &t,
+                    Type::Unpack(inner) if matches!(&**inner, Type::Tuple(_) | Type::TypeVarTuple(_) | Type::Quantified(_) | Type::UntypedAlias(_))
+                ) =>
+            {
+                Some(t)
+            }
+            Type::Unpack(ref inner)
+                if let Type::Var(v) = &**inner
+                    && let Some(_guard) = self.recurse(*v) =>
+            {
+                self.untype_opt(
+                    self.heap.mk_unpack(self.solver().force_var(*v)),
                     range,
                     errors,
-                ),
+                )
+            }
             Type::QuantifiedValue(q) => Some(q.to_type(self.heap)),
             Type::ArgsValue(q) => Some(self.heap.mk_args(*q)),
             Type::KwargsValue(q) => Some(self.heap.mk_kwargs(*q)),
@@ -5655,9 +5678,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::TypedDict(_) | Type::PartialTypedDict(_) => {
                 self.heap.mk_class_def(self.stdlib.dict_object().clone())
             }
-            Type::Union(box Union { members: xs, .. }) if !xs.is_empty() => {
+            Type::Union(f) if !f.members.is_empty() => {
                 let mut ts = Vec::new();
-                for x in xs {
+                for x in f.members {
                     let t = self.type_of(x);
                     ts.push(t);
                 }
@@ -5684,7 +5707,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         if type_form_context != TypeFormContext::ParameterKwargsAnnotation
-            && matches!(ty, Type::Unpack(box Type::TypedDict(_)))
+            && matches!(ty, Type::Unpack(ref inner) if matches!(&**inner, Type::TypedDict(_)))
         {
             return self.error(
                 errors,

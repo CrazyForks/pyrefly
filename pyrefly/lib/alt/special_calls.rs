@@ -12,7 +12,6 @@
  */
 
 use pyrefly_types::callable::FuncMetadata;
-use pyrefly_types::types::Union;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
 use ruff_python_ast::Expr;
@@ -432,7 +431,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                 }
             } else if contains_subscript
-                && matches!(&class_info_ty, Type::Type(box Type::ClassType(cls)) if !cls.targs().is_empty())
+                && matches!(&class_info_ty, Type::Type(f) if matches!(&**f, Type::ClassType(cls) if !cls.targs().is_empty()))
             {
                 // If the raw expression contains something that structurally looks like `A[T]` and
                 // part of the expression resolves to a parameterized class type, then we likely have a
@@ -446,7 +445,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.for_display(class_info_ty)
                     ),
                 );
-            } else if let Type::Type(box Type::SpecialForm(special_form)) = &class_info_ty {
+            } else if let Type::Type(f) = &class_info_ty
+                && let Type::SpecialForm(special_form) = &**f
+            {
                 if !special_form.isinstance_safe() {
                     self.error(
                         errors,
@@ -576,13 +577,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // Could be anything inside here, so add in Any.
                     res.push(me.heap.mk_any_implicit());
                 }
-                Type::Tuple(Tuple::Concrete(ts)) | Type::Union(box Union { members: ts, .. }) => {
+                Type::Tuple(Tuple::Concrete(ts)) => {
                     for t in ts {
                         f(me, t, res)
                     }
                 }
-                Type::Tuple(Tuple::Unbounded(box t)) => f(me, t, res),
-                Type::Tuple(Tuple::Unpacked(box (pre, mid, post))) => {
+                Type::Union(u) => {
+                    for t in u.members {
+                        f(me, t, res)
+                    }
+                }
+                Type::Tuple(Tuple::Unbounded(t)) => f(me, *t, res),
+                Type::Tuple(Tuple::Unpacked(unpacked)) => {
+                    let (pre, mid, post) = *unpacked;
                     for t in pre {
                         f(me, t, res)
                     }
@@ -591,8 +598,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         f(me, t, res)
                     }
                 }
-                Type::Type(box Type::Union(box Union { members: ts, .. })) => {
-                    for t in ts {
+                Type::Type(inner) if matches!(&*inner, Type::Union(_)) => {
+                    // Repeated match because pattern guards cannot move out of bindings.
+                    let Type::Union(u) = *inner else {
+                        unreachable!("guarded by matches! above")
+                    };
+                    for t in u.members {
                         f(me, me.heap.mk_type_of(t), res)
                     }
                 }
