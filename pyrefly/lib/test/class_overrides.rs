@@ -1204,6 +1204,25 @@ class B(A):
 );
 
 testcase!(
+    test_missing_override_decorator_property_setter_assignment,
+    TestEnv::new().enable_missing_override_decorator_error(),
+    r#"
+class Base:
+    @property
+    def prop(self) -> int:
+        return 0
+
+    @prop.setter
+    def prop(self, value: int) -> None:
+        pass
+
+class Child(Base):
+    def __init__(self):
+        self.prop = 42  # OK - using inherited property setter, not overriding
+    "#,
+);
+
+testcase!(
     test_missing_override_decorator_nested_class,
     TestEnv::new().enable_missing_override_decorator_error(),
     r#"

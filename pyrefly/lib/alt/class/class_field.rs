@@ -1668,11 +1668,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             ClassField(
                                 ClassFieldInner::Property { .. }
                                 | ClassFieldInner::Descriptor { .. },
-                                ..,
+                                _,
                             ) => {
-                                // If we found a property or descriptor in the parent, return the parent's field.
-                                // This ensures setters are properly inherited.
-                                return Arc::unwrap_or_clone(parent_field.value);
+                                // The child is using the inherited property/descriptor setter,
+                                // not redefining the field. Return the parent's field with
+                                // IsInherited::No so the override check skips it.
+                                let ClassField(inner, _) = Arc::unwrap_or_clone(parent_field.value);
+                                return ClassField(inner, IsInherited::No);
                             }
                             _ => {
                                 // For non-property fields, continue with normal processing
