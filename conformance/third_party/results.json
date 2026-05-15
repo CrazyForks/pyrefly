@@ -3,7 +3,7 @@
   "pass": 132,
   "fail": 8,
   "pass_rate": 0.94,
-  "differences": 25,
+  "differences": 24,
   "passing": [
     "aliases_explicit.py",
     "aliases_implicit.py",
@@ -146,7 +146,7 @@
     "directives_disjoint_base.py": 6,
     "exceptions_context_managers.py": 2,
     "generics_scoping.py": 4,
-    "typeforms_typeform.py": 2
+    "typeforms_typeform.py": 1
   },
   "comment": "@generated"
 }

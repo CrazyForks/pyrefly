@@ -12621,28 +12621,6 @@
     },
     {
       "code": -2,
-      "column": 33,
-      "concise_description": "`type[list[int]]` is not assignable to `GenericAlias`",
-      "description": "`type[list[int]]` is not assignable to `GenericAlias`",
-      "line": 49,
-      "name": "bad-assignment",
-      "severity": "error",
-      "stop_column": 42,
-      "stop_line": 49
-    },
-    {
-      "code": -2,
-      "column": 33,
-      "concise_description": "Expected `v2_actual` to be a type alias, got `GenericAlias`",
-      "description": "Expected `v2_actual` to be a type alias, got `GenericAlias`",
-      "line": 49,
-      "name": "invalid-type-alias",
-      "severity": "error",
-      "stop_column": 42,
-      "stop_line": 49
-    },
-    {
-      "code": -2,
       "column": 7,
       "concise_description": "Argument `Literal['int']` is not assignable to parameter `x` with type `TypeForm[Any]` in function `func1`",
       "description": "Argument `Literal['int']` is not assignable to parameter `x` with type `TypeForm[Any]` in function `func1`",

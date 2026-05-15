@@ -513,7 +513,8 @@ impl<'a> BindingsBuilder<'a> {
         let has_type_alias_qualifier = direct_ann
             .is_some_and(|(e, _)| self.as_special_export(e) == Some(SpecialExport::TypeAlias));
         let is_definitely_type_alias = receiver_idx.is_none()
-            && (has_type_alias_qualifier || self.is_definitely_type_alias_rhs(value.as_ref()));
+            && (has_type_alias_qualifier
+                || (direct_ann.is_none() && self.is_definitely_type_alias_rhs(value.as_ref())));
         let has_typeform_annotation = direct_ann.is_some_and(|(e, _)| {
             self.as_special_export(e) == Some(SpecialExport::TypeForm)
                 || matches!(e, Expr::Subscript(x) if self.as_special_export(&x.value) == Some(SpecialExport::TypeForm))

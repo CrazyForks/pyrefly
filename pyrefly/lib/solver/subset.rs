@@ -1984,6 +1984,14 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             {
                 Ok(())
             }
+            // type[C[T, ...]] <: types.GenericAlias — subscripted generics create GenericAlias at runtime.
+            (Type::Type(inner), Type::ClassType(want))
+                if let Type::ClassType(got) = &**inner
+                    && want.has_qname("types", "GenericAlias")
+                    && !got.targs().is_empty() =>
+            {
+                Ok(())
+            }
             // TypeForm covariance: TypeForm[S] <: TypeForm[T] when S <: T
             (Type::TypeForm(l), Type::TypeForm(u)) => self.is_subset_eq(l, u),
             // type[T] <: TypeForm[T] — class objects are valid type forms.
