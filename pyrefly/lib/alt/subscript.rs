@@ -60,7 +60,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
         match tuple {
             Tuple::Concrete(elts) => self.infer_concrete_slice(elts, &slice.lower, &slice.upper),
-            Tuple::Unpacked(box (prefix, middle, suffix)) => {
+            Tuple::Unpacked(f) => {
+                let (prefix, middle, suffix) = &**f;
                 self.infer_unpacked_slice(prefix, middle, suffix, &slice.lower, &slice.upper)
             }
             _ => None,
@@ -79,7 +80,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Tuple::Concrete(elts) => {
                     self.infer_concrete_index(elts, idx, index.range(), errors)
                 }
-                Tuple::Unpacked(box (prefix, _middle, suffix)) => {
+                Tuple::Unpacked(f) => {
+                    let (prefix, _middle, suffix) = &**f;
                     self.infer_unpacked_index(prefix, suffix, idx)
                 }
                 _ => None,

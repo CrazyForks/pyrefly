@@ -156,7 +156,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 range,
                 errors,
             )),
-            Type::Type(box Type::SpecialForm(special)) => {
+            Type::Type(f) if let Type::SpecialForm(special) = *f => {
                 self.apply_special_form(special, slice, range, errors)
             }
             Type::Any(style) => style.propagate(),
@@ -352,7 +352,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             }
                         }
                     }
-                    (Type::Type(box Type::Any(_)), range) => {
+                    (Type::Type(f), range) if f.is_any() => {
                         // `type[Any]` is equivalent to `type` or `Type`
                         let class = self.stdlib.builtins_type().clone();
                         let bases = self

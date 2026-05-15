@@ -8,7 +8,6 @@
 use std::slice;
 
 use pyrefly_types::literal::LitStyle;
-use pyrefly_types::types::Union;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
 use ruff_python_ast::Expr;
@@ -123,25 +122,34 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             let ty = self.expr_untype(value, TypeFormContext::TupleOrCallableParam, errors);
             match ty {
-                Type::Unpack(box Type::Tuple(Tuple::Concrete(elts))) => {
+                Type::Unpack(ty) if matches!(&*ty, Type::Tuple(Tuple::Concrete(_))) => {
                     has_unpack = true;
+                    // Repeated match because pattern guards cannot move out of bindings.
+                    let Type::Tuple(Tuple::Concrete(elts)) = *ty else {
+                        unreachable!("guarded by matches! above")
+                    };
                     if middle.is_none() {
                         prefix.extend(elts)
                     } else {
                         suffix.extend(elts)
                     }
                 }
-                Type::Unpack(box ty @ Type::Tuple(Tuple::Unbounded(_))) => {
+                Type::Unpack(ty) if matches!(&*ty, Type::Tuple(Tuple::Unbounded(_))) => {
                     has_unpack = true;
                     if middle.is_none() {
-                        middle = Some(ty)
+                        middle = Some(*ty)
                     } else {
                         self.extra_unpack_error(errors, value.range());
                         return None;
                     }
                 }
-                Type::Unpack(box Type::Tuple(Tuple::Unpacked(box (pre, mid, suff)))) => {
+                Type::Unpack(ty) if matches!(&*ty, Type::Tuple(Tuple::Unpacked(_))) => {
                     has_unpack = true;
+                    // Repeated match because pattern guards cannot move out of bindings.
+                    let Type::Tuple(Tuple::Unpacked(unpacked)) = *ty else {
+                        unreachable!("guarded by matches! above")
+                    };
+                    let (pre, mid, suff) = *unpacked;
                     if middle.is_none() {
                         prefix.extend(pre);
                         middle = Some(mid);
@@ -163,7 +171,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // UntypedAlias (from a TypeAliasRef) is opaque at the raw layer;
                 // it will be expanded in wrap_type_alias. Treat it as a valid
                 // middle element like TypeVarTuple.
-                Type::Unpack(ty @ box Type::UntypedAlias(_)) => {
+                Type::Unpack(ty) if matches!(&*ty, Type::UntypedAlias(_)) => {
                     has_unpack = true;
                     if middle.is_none() {
                         middle = Some(*ty)
@@ -247,9 +255,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     match x {
                         Type::None | Type::Literal(_) | Type::Any(AnyStyle::Error) => true,
                         Type::Annotated(inner, _) => is_valid_literal(inner),
-                        Type::Union(box Union { members: xs, .. }) => {
-                            xs.iter().all(is_valid_literal)
-                        }
+                        Type::Union(f) => f.members.iter().all(is_valid_literal),
                         _ => false,
                     }
                 }
@@ -299,7 +305,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Expr::Subscript(_) => {
                 let ty = self.expr_infer(x, errors);
                 self.map_over_union(&ty, |ty| match ty {
-                    Type::Type(box lit @ Type::Literal(_)) => literals.push(lit.clone()),
+                    Type::Type(lit) if matches!(&**lit, Type::Literal(_)) => {
+                        literals.push((**lit).clone())
+                    }
                     ty @ Type::Any(AnyStyle::Error) => literals.push(ty.clone()),
                     _ => {
                         self.error(
