@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use dupe::Dupe;
 use pyrefly_python::dunder;
-use pyrefly_types::literal::Literal;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::tensor_ops_registry::TensorOpsRegistry;
@@ -19,7 +18,6 @@ use pyrefly_types::types::CalleeKind;
 use pyrefly_types::types::NNModuleType;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::TParams;
-use pyrefly_types::types::Union;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
 use ruff_python_ast::Arguments;
@@ -262,10 +260,18 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 let BoundMethod { obj, func } = bound_method;
                 match self.as_call_target_impl(func.as_type(), quantified) {
-                    CallTargetLookup::Ok(box CallTarget::Function(func)) => {
+                    CallTargetLookup::Ok(f) if matches!(&*f, CallTarget::Function(_)) => {
+                        // Repeated match because pattern guards cannot move out of bindings.
+                        let CallTarget::Function(func) = *f else {
+                            unreachable!("guarded by matches! above")
+                        };
                         CallTargetLookup::Ok(Box::new(CallTarget::BoundMethod(obj, func)))
                     }
-                    CallTargetLookup::Ok(box CallTarget::FunctionOverload(overloads, meta)) => {
+                    CallTargetLookup::Ok(f) if matches!(&*f, CallTarget::FunctionOverload(..)) => {
+                        // Repeated match because pattern guards cannot move out of bindings.
+                        let CallTarget::FunctionOverload(overloads, meta) = *f else {
+                            unreachable!("guarded by matches! above")
+                        };
                         CallTargetLookup::Ok(Box::new(CallTarget::BoundMethodOverload(
                             obj, overloads, meta,
                         )))
@@ -285,28 +291,54 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 _ => unreachable!(),
             },
-            Type::Type(box Type::ClassType(cls)) => CallTargetLookup::Ok(Box::new(
-                CallTarget::Class(cls, ConstructorKind::TypeOfClass, None),
-            )),
+            Type::Type(f) if matches!(&*f, Type::ClassType(_)) => {
+                let Type::ClassType(cls) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
+                CallTargetLookup::Ok(Box::new(CallTarget::Class(
+                    cls,
+                    ConstructorKind::TypeOfClass,
+                    None,
+                )))
+            }
             // `type[A | B]` is equivalent to `type[A] | type[B]` for call target resolution.
             // Distribute `type[...]` over union members and resolve as a union.
-            Type::Type(box Type::Union(box Union { members: xs, .. })) => {
-                let union_of_types = self
-                    .heap
-                    .mk_union(xs.into_iter().map(|x| self.heap.mk_type_of(x)).collect());
+            Type::Type(f) if matches!(&*f, Type::Union(_)) => {
+                let Type::Union(u) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
+                let union_of_types = self.heap.mk_union(
+                    u.members
+                        .into_iter()
+                        .map(|x| self.heap.mk_type_of(x))
+                        .collect(),
+                );
                 self.as_call_target_impl(union_of_types, quantified)
             }
-            Type::Type(box Type::SelfType(cls)) => CallTargetLookup::Ok(Box::new(
-                CallTarget::Class(cls, ConstructorKind::TypeOfSelf, None),
-            )),
-            Type::Type(box Type::Tuple(tuple)) => {
+            Type::Type(f) if matches!(&*f, Type::SelfType(_)) => {
+                let Type::SelfType(cls) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
+                CallTargetLookup::Ok(Box::new(CallTarget::Class(
+                    cls,
+                    ConstructorKind::TypeOfSelf,
+                    None,
+                )))
+            }
+            Type::Type(f) if matches!(&*f, Type::Tuple(_)) => {
+                let Type::Tuple(tuple) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
                 CallTargetLookup::Ok(Box::new(CallTarget::Class(
                     self.erase_tuple_type(tuple),
                     ConstructorKind::TypeOfClass,
                     None,
                 )))
             }
-            Type::Type(box Type::Quantified(quantified)) => {
+            Type::Type(f) if matches!(&*f, Type::Quantified(_)) => {
+                let Type::Quantified(quantified) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
                 let call_target = match quantified.restriction() {
                     Restriction::Unrestricted => {
                         // Assume this is object.__init__, reject any argument
@@ -349,23 +381,24 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             Type::Forall(forall) => {
                 let mut target = self.as_call_target_impl(forall.body.as_type(), quantified);
-                match &mut target {
-                    CallTargetLookup::Ok(
-                        box (CallTarget::Callable(TargetWithTParams(x, _))
-                        | CallTarget::Function(TargetWithTParams(x, _))),
-                    ) => {
-                        *x = Some(forall.tparams);
+                if let CallTargetLookup::Ok(f) = &mut target {
+                    match &mut **f {
+                        CallTarget::Callable(TargetWithTParams(x, _))
+                        | CallTarget::Function(TargetWithTParams(x, _)) => {
+                            *x = Some(forall.tparams);
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
                 target
             }
             Type::Var(v) if let Some(_guard) = self.recurse(v) => {
                 self.as_call_target_impl(self.solver().force_var(v), quantified)
             }
-            Type::Union(box Union { members: xs, .. }) => {
-                let xs_length = xs.len();
-                let targets = xs
+            Type::Union(f) => {
+                let xs_length = f.members.len();
+                let targets = f
+                    .members
                     .into_iter()
                     .filter_map(|x| match self.as_call_target_impl(x, quantified.clone()) {
                         CallTargetLookup::Ok(target) => Some(*target),
@@ -391,7 +424,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let body = self.get_type_alias(&ta).as_value(self.stdlib);
                 match body {
                     // This comes from an expression like `int | str`, which is not callable.
-                    Type::Type(box Type::Union(_)) => CallTargetLookup::Error(vec![]),
+                    Type::Type(f) if matches!(&*f, Type::Union(_)) => {
+                        CallTargetLookup::Error(vec![])
+                    }
                     _ => self.as_call_target_impl(body, quantified),
                 }
             }
@@ -450,11 +485,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.as_call_target_impl(ty, None)
                     })
             }
-            Type::Type(box Type::TypedDict(TypedDict::TypedDict(typed_dict))) => {
+            Type::Type(f) if matches!(&*f, Type::TypedDict(TypedDict::TypedDict(_))) => {
+                let Type::TypedDict(TypedDict::TypedDict(typed_dict)) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
                 CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(typed_dict)))
             }
-            Type::Type(box Type::TypedDict(td @ TypedDict::Anonymous(_))) => {
-                let value_ty = self.get_typed_dict_value_type(&td);
+            Type::Type(ref f) if let Type::TypedDict(td @ TypedDict::Anonymous(_)) = &**f => {
+                let value_ty = self.get_typed_dict_value_type(td);
                 let cls = self
                     .stdlib
                     .dict(self.heap.mk_class_type(self.stdlib.str().clone()), value_ty);
@@ -464,14 +502,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     None,
                 )))
             }
-            Type::Type(box Type::Intersect(box (_, fallback))) => {
+            Type::Type(f) if matches!(&*f, Type::Intersect(_)) => {
                 // TODO(rechen): implement calling `type[A & B]`
+                let Type::Intersect(intersect) = *f else {
+                    unreachable!("guarded by matches! above")
+                };
+                let (_, fallback) = *intersect;
                 self.as_call_target_impl(self.heap.mk_type_of(fallback), quantified)
             }
             Type::Quantified(q) if q.is_type_var() => match q.restriction() {
                 Restriction::Unrestricted => CallTargetLookup::Error(vec![]),
                 Restriction::Bound(bound) => match bound {
-                    Type::Union(box Union { members, .. }) => {
+                    Type::Union(f) => {
+                        let members = &f.members;
                         let mut targets = Vec::new();
                         for member in members {
                             if let CallTargetLookup::Ok(target) = self.as_call_target_impl(
@@ -508,10 +551,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
             },
             Type::KwCall(call) => self.as_call_target_impl(call.return_ty, quantified),
-            Type::Literal(box Literal {
-                value: Lit::Enum(enum_),
-                ..
-            }) => {
+            Type::Literal(ref f) if let Lit::Enum(enum_) = &f.value => {
                 self.as_call_target_impl(self.heap.mk_class_type(enum_.class.clone()), quantified)
             }
             _ => CallTargetLookup::Error(vec![]),
@@ -1929,8 +1969,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     )
                 }
                 None if matches!(
-                    ty,
-                    Type::Type(box Type::SpecialForm(SpecialForm::TypeForm))
+                    &ty,
+                    Type::Type(f) if matches!(&**f, Type::SpecialForm(SpecialForm::TypeForm))
                 ) =>
                 {
                     self.call_typeform(

@@ -36,7 +36,6 @@ use pyrefly_types::type_alias::TypeAlias;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_var::PreInferenceVariance;
 use pyrefly_types::type_var::Restriction;
-use pyrefly_types::types::Union;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::recurser::Guard;
 use pyrefly_util::uniques::UniqueFactory;
@@ -3170,12 +3169,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             fn go(&mut self, ty: &Type, in_type: bool) {
                 match ty {
                     Type::Never(_) if !in_type => (),
-                    Type::Union(box Union { members, .. }) => {
+                    Type::Union(f) => {
                         self.seen_union = true;
-                        members.iter().for_each(|ty| self.go(ty, in_type))
+                        f.members.iter().for_each(|ty| self.go(ty, in_type))
                     }
-                    Type::Type(box Type::Union(box Union { members, .. })) if !in_type => {
-                        members.iter().for_each(|ty| self.go(ty, true))
+                    Type::Type(f) if !in_type && let Type::Union(u) = &**f => {
+                        u.members.iter().for_each(|ty| self.go(ty, true))
                     }
                     Type::Var(v) if let Some(_guard) = self.me.recurse(*v) => {
                         self.go(&self.me.solver().force_var(*v), in_type)

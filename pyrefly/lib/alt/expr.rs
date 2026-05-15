@@ -33,7 +33,6 @@ use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_types::types::Forallable;
-use pyrefly_types::types::Union;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -883,9 +882,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 suffix.extend(elts)
                             }
                         }
-                        Type::Tuple(Tuple::Unpacked(box (pre, middle, suff)))
-                            if unbounded.is_empty() =>
-                        {
+                        Type::Tuple(Tuple::Unpacked(f)) if unbounded.is_empty() => {
+                            let (pre, middle, suff) = *f;
                             prefix.extend(pre);
                             suffix.extend(suff);
                             unbounded.push(middle);
@@ -975,9 +973,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     fn tuple_to_element_hints<'b>(&self, tup: &'b Tuple) -> (Vec<&'b Type>, Option<&'b Type>) {
         match tup {
             Tuple::Concrete(elts) => (elts.iter().collect(), None),
-            Tuple::Unpacked(box (prefix, _, _)) => {
+            Tuple::Unpacked(f) => {
                 // TODO: We should also contextually type based on the middle and suffix
-                (prefix.iter().collect(), None)
+                (f.0.iter().collect(), None)
             }
             Tuple::Unbounded(elt) => (Vec::new(), Some(elt)),
         }
@@ -2005,9 +2003,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::ClassType(cls) | Type::SelfType(cls) => {
                 self.has_superclass(cls.class_object(), self.stdlib.enum_class().class_object())
             }
-            Type::Union(box Union {
-                members: variants, ..
-            }) => variants
+            Type::Union(f) => f
+                .members
                 .iter()
                 .all(|variant| self.is_enum_class_type(variant)),
             _ => false,
@@ -2191,7 +2188,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         ))
                     }
                 }
-                Type::Type(box Type::Quantified(quantified)) if quantified.is_type_var() => {
+                Type::Type(f) if matches!(&*f, Type::Quantified(q) if q.is_type_var()) => {
+                    // Repeated match because pattern guards cannot move out of bindings.
+                    let Type::Quantified(quantified) = *f else { unreachable!("guarded by matches! above") };
                     let quantified = *quantified;
                     let base_display_ty =
                         self.heap.mk_type(self.heap.mk_quantified(quantified.clone()));
@@ -2244,7 +2243,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         )
                     }
                 }
-                Type::Type(box Type::SpecialForm(special)) => {
+                Type::Type(f) if let Type::SpecialForm(special) = *f => {
                     self.apply_special_form(special, slice, range, errors)
                 }
                 Type::Tuple(ref tuple) => self.infer_tuple_subscript(
@@ -2316,21 +2315,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // E.g., Tensor[10, 20] has targs [10, 20]
                     let targs = cls.targs().as_slice();
 
-                    match targs {
-                        [] | [Type::Tuple(Tuple::Unbounded(box Type::Any(_)))] => {
-                            // Shapeless tensor class - create shapeless TensorType and use tensor indexing
-                            let tensor_type = TensorType::shapeless(cls.clone());
-                            self.infer_tensor_index(&tensor_type, slice, range, errors)
-                        }
-                        _ => {
-                            // Build TensorShape from type arguments
-                            let shape_dims: Vec<Type> = targs.to_vec();
-                            let tensor_shape = TensorShape::from_types(shape_dims);
+                    let is_shapeless = match targs {
+                        [] => true,
+                        [Type::Tuple(Tuple::Unbounded(f))] => f.is_any(),
+                        _ => false,
+                    };
+                    if is_shapeless {
+                        // Shapeless tensor class - create shapeless TensorType and use tensor indexing
+                        let tensor_type = TensorType::shapeless(cls.clone());
+                        self.infer_tensor_index(&tensor_type, slice, range, errors)
+                    } else {
+                        // Build TensorShape from type arguments
+                        let shape_dims: Vec<Type> = targs.to_vec();
+                        let tensor_shape = TensorShape::from_types(shape_dims);
 
-                            // Create TensorType with the class as base_class
-                            let tensor_type = TensorType::new(cls.clone(), tensor_shape);
-                            self.infer_tensor_index(&tensor_type, slice, range, errors)
-                        }
+                        // Create TensorType with the class as base_class
+                        let tensor_type = TensorType::new(cls.clone(), tensor_shape);
+                        self.infer_tensor_index(&tensor_type, slice, range, errors)
                     }
                 }
                 Type::ClassType(ref cls) | Type::SelfType(ref cls)
@@ -2601,7 +2602,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         )
                         .to_type()
                     }
-                    TensorShape::Unpacked(box (prefix, middle, suffix)) => {
+                    TensorShape::Unpacked(f) => {
+                        let (prefix, middle, suffix) = &**f;
                         new_dims.extend(prefix.iter().cloned());
                         TensorType::new(
                             tensor_type.base_class.clone(),

@@ -28,7 +28,6 @@ use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::BoundMethodType;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::TParamsSource;
-use pyrefly_types::types::Union;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
@@ -1287,10 +1286,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ///   [T1](x: T1, y: T1) -> ([T2](T2) -> T2)
     fn move_return_tparams_of_type(&self, ty: Type) -> Type {
         match ty {
-            Type::Forall(box Forall {
-                tparams,
-                body: Forallable::Function(func),
-            }) => {
+            Type::Forall(f) if let Forallable::Function(_) = &f.body => {
+                let Forall {
+                    tparams,
+                    body: Forallable::Function(func),
+                } = *f
+                else {
+                    unreachable!("guarded above")
+                };
                 let (tparams, signature) =
                     self.move_return_tparams_of_signature(tparams, func.signature);
                 Forallable::Function(Function {
@@ -1299,10 +1302,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 })
                 .forall(tparams)
             }
-            Type::Forall(box Forall {
-                tparams,
-                body: Forallable::Callable(signature),
-            }) => {
+            Type::Forall(f) if let Forallable::Callable(_) = &f.body => {
+                let Forall {
+                    tparams,
+                    body: Forallable::Callable(signature),
+                } = *f
+                else {
+                    unreachable!("guarded above")
+                };
                 let (tparams, signature) =
                     self.move_return_tparams_of_signature(tparams, signature);
                 Forallable::Callable(signature).forall(tparams)
@@ -1318,9 +1325,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> (Arc<TParams>, Callable) {
         let returns_callable = match &signature.ret {
             Type::Callable(_) => true,
-            Type::Union(box Union { members: ts, .. }) => {
-                ts.iter().any(|t| matches!(t, Type::Callable(_)))
-            }
+            Type::Union(f) => f.members.iter().any(|t| matches!(t, Type::Callable(_))),
             _ => false,
         };
         if !returns_callable {
@@ -1459,14 +1464,20 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 signature: *c,
                 metadata: metadata.clone(),
             }),
-            Type::Forall(box Forall {
-                tparams,
-                body: Forallable::Callable(c),
-            }) => Forallable::Function(Function {
-                signature: c,
-                metadata: metadata.clone(),
-            })
-            .forall(tparams),
+            Type::Forall(f) if let Forallable::Callable(_) = &f.body => {
+                let Forall {
+                    tparams,
+                    body: Forallable::Callable(c),
+                } = *f
+                else {
+                    unreachable!("guarded above")
+                };
+                Forallable::Function(Function {
+                    signature: c,
+                    metadata: metadata.clone(),
+                })
+                .forall(tparams)
+            }
             // Callback protocol. We convert it to a function so we can add function metadata.
             Type::ClassType(cls)
                 if self
@@ -1565,7 +1576,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let new_tparams = Arc::new(TParams::new(relevant_tparams_vec));
         match inferred_ty {
             // Merge tparams from decoratee and inferred_ty.
-            Type::Forall(box forall) => {
+            Type::Forall(forall) => {
                 let mut merged_tparams = (*new_tparams).clone();
                 merged_tparams.extend(&forall.tparams);
                 forall.body.forall(Arc::new(merged_tparams))
@@ -1755,23 +1766,37 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         metadata,
                     }),
                     Type::Function(function) => OverloadType::Function(*function),
-                    Type::Forall(box Forall {
-                        tparams,
-                        body: Forallable::Callable(callable),
-                    }) => OverloadType::Forall(Forall {
-                        tparams,
-                        body: Function {
-                            signature: callable,
-                            metadata,
-                        },
-                    }),
-                    Type::Forall(box Forall {
-                        tparams,
-                        body: Forallable::Function(func),
-                    }) => OverloadType::Forall(Forall {
-                        tparams,
-                        body: func,
-                    }),
+                    Type::Forall(f) if matches!(f.body, Forallable::Callable(_)) => {
+                        // Repeated match because pattern guards cannot move out of bindings.
+                        let Forall {
+                            tparams,
+                            body: Forallable::Callable(callable),
+                        } = *f
+                        else {
+                            unreachable!("guarded by matches! above")
+                        };
+                        OverloadType::Forall(Forall {
+                            tparams,
+                            body: Function {
+                                signature: callable,
+                                metadata,
+                            },
+                        })
+                    }
+                    Type::Forall(f) if matches!(f.body, Forallable::Function(_)) => {
+                        // Repeated match because pattern guards cannot move out of bindings.
+                        let Forall {
+                            tparams,
+                            body: Forallable::Function(func),
+                        } = *f
+                        else {
+                            unreachable!("guarded by matches! above")
+                        };
+                        OverloadType::Forall(Forall {
+                            tparams,
+                            body: func,
+                        })
+                    }
                     Type::Any(any_style) => OverloadType::Function(Function {
                         signature: Callable::ellipsis(any_style.propagate()),
                         metadata,
@@ -2427,7 +2452,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         {
             let cls_name = cls.name();
             match cls_ty {
-                Type::Type(box Type::ClassType(inner_cls)) => {
+                Type::Type(f) if let Type::ClassType(inner_cls) = &**f => {
                     // Skipping validation for protocols is on par with Pyright's behavior.
                     // TODO: we could consider checking structural subtyping here.
                     if inner_cls.name() != cls_name
@@ -2451,9 +2476,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // allow Any, type[Any], type[Self], type[TypeVar], and bare TypeVar
                 // (bare TypeVar is allowed because it may have a `type[X]` bound,
                 // e.g. `TCls = TypeVar("TCls", bound=type["Foo"])`)
-                Type::Type(box Type::SelfType(_) | box Type::Quantified(_) | box Type::Any(_))
-                | Type::Any(_)
-                | Type::Quantified(_) => {}
+                Type::Type(f)
+                    if matches!(&**f, Type::SelfType(_) | Type::Quantified(_) | Type::Any(_)) => {}
+                Type::Any(_) | Type::Quantified(_) => {}
                 _ => {
                     errors
                         .error_builder(
