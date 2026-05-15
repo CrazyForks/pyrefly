@@ -373,7 +373,8 @@ impl<'a> BindingsBuilder<'a> {
 
                 let promote = self.scopes.in_function_scope()
                     && (is_module_scope || self.scopes.is_defined_at_module_scope(&name.id))
-                    && !is_constant_name(&name.id);
+                    && !is_constant_name(&name.id)
+                    && !self.scopes.is_final_at_module_scope(&name.id);
                 if promote {
                     self.promote_ranges.insert(name.range);
                 }

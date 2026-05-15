@@ -160,6 +160,50 @@ def f2(x: E | int):
 );
 
 testcase!(
+    test_is_not_final_enum,
+    r#"
+from enum import Enum
+from typing import Final, Iterable, assert_type
+
+class EmptyType(Enum):
+    EMPTY = 0
+
+Empty: Final = EmptyType.EMPTY
+
+class Bar:
+    baz: int | EmptyType = 4
+
+def foo(bar: Bar) -> Iterable[int]:
+    if bar.baz is not Empty:
+        assert_type(bar.baz, int)
+        return [bar.baz]
+    return []
+    "#,
+);
+
+testcase!(
+    test_is_not_final_enum_type_alias,
+    r#"
+from enum import Enum
+from typing import Final, Iterable, Literal, TypeAlias
+
+class _EmptyEnum(Enum):
+    EMPTY = 0
+
+EmptyType: TypeAlias = Literal[_EmptyEnum.EMPTY]
+Empty: Final = _EmptyEnum.EMPTY
+
+class Bar:
+    baz: int | EmptyType = 4
+
+def foo(bar: Bar) -> Iterable[int]:
+    if bar.baz is not Empty:
+        return [bar.baz]
+    return []
+    "#,
+);
+
+testcase!(
     test_ellipsis_is,
     r#"
 from typing import reveal_type
