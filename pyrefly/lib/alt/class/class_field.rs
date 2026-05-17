@@ -3254,6 +3254,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         let mut got_attribute = None;
         let mut parent_attr_found = false;
+        let mut parent_attr_is_from_object = false;
         let mut parent_has_any = false;
         let is_typed_dict_field = self.is_typed_dict_field(metadata.as_ref(), field_name);
         let is_named_tuple_element = metadata
@@ -3288,11 +3289,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             if is_named_tuple_element {
                 continue;
             }
-            let Some(want_field) = self.get_class_member(parent_cls, field_name) else {
+            let Some(want_field) =
+                self.get_class_member_with_defining_class(parent_cls, field_name)
+            else {
                 continue;
             };
             parent_attr_found = true;
-            let want_class_field = Arc::unwrap_or_clone(want_field);
+            if want_field.defining_class.is_builtin("object") {
+                parent_attr_is_from_object = true;
+            }
+            let want_class_field = Arc::unwrap_or_clone(want_field.value);
             if want_class_field.is_final() {
                 self.error(
                     errors,
@@ -3597,10 +3603,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Check for missing @override decorator when overriding a parent attribute.
         // This error is emitted when a method overrides a parent but doesn't have @override.
         // Since this error has Severity::Ignore by default, it won't be shown unless enabled.
-        if !is_explicit_override
-            && parent_attr_found
-            && !parent_has_any
-            && !is_dunder(field_name.as_str())
+        if !(is_explicit_override
+            || !parent_attr_found
+            || parent_has_any
+            || parent_attr_is_from_object && is_dunder(field_name.as_str()))
             && class_field.can_have_override_decorator()
         {
             self.error(

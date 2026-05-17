@@ -1185,7 +1185,7 @@ class Base:
     def __str__(self) -> str: ...  # OK
 
 class Derived(Base):
-    def __str__(self) -> str: ...  # OK
+    def __str__(self) -> str: ...  # E: overrides a member in a parent class but is missing an `@override` decorator
     "#,
 );
 
@@ -1260,7 +1260,7 @@ class Base:
         return 0
 
 class Child(Base):
-    def __len__(self) -> int:
+    def __len__(self) -> int:  # E: overrides a member in a parent class but is missing an `@override` decorator
         return 1
     "#,
 );
